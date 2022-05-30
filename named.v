@@ -81,22 +81,26 @@ Global Instance VLift : Lift V := {
 
 (** Lemma: [lift 0 0] is the identity transformation. *)
 Lemma zero_lift_is_id : forall (n : nat), lift 0 0 (BVar n) = (BVar n).
+Proof.
   intros. simpl. auto.
 Qed.
 
 Theorem case_lift_is_not_id : forall (i k n : nat), k <= n -> lift k i (BVar n) = BVar (n+i).
+Proof.
   intros. simpl. destruct (lt_dec n k).
   - contradict H. apply Gt.gt_not_le in l. auto.
   - auto.
 Qed.
 
 Theorem case_lift_is_id : forall (i k n : nat), k > n -> lift k i (BVar n) = BVar (n).
+Proof.
   intros. simpl. destruct (lt_dec n k). 
   - auto.
   - apply not_lt in n0. contradict n0. apply Gt.gt_not_le in H. trivial.
 Qed.
 
 Example shift_is_not_id : shift (BVar 0) = (BVar 1).
+Proof.
   trivial.
 Qed.
 
@@ -627,8 +631,19 @@ Global Instance EqPred : Eq Predicate :=
   end
 }.
 
+Global Instance LiftPred : Lift Predicate :=
+{
+  lift (c d : nat) (p : Predicate) :=
+  match p with
+  | P n s args => P n s (Vector.map (fun (a : Term) => lift c d a) args)
+  end
+}.
+
 (** ** Formulas
 
+The grammar of formulas is rather straightforward. Honestly, I was unsure how
+"slick" I should be: [Verum] could be defined as [Not Falsum], but using a 
+minimal set of connectives seemed _too_ slick for my tastes.
 *)
 Inductive Formula : Type :=
 | Falsum
@@ -640,6 +655,51 @@ Inductive Formula : Type :=
 | Forall : Formula -> Formula
 | Exists : Formula -> Formula.
 
+(** "Variable closing", or binding a free variable to a quantifier (or any
+binder), is a bit tricky. We have a helper function here for the iterative
+step. It behaves "functorially", descending to the leafs, i.e., [Falsum] and
+[Atom]. *)
+Fixpoint subst_bvar_iter (x : name) (n : nat) (phi : Formula) : Formula :=
+match phi with
+| Falsum => phi
+| Atom pred => Atom (subst (FVar x) (Var (BVar n)) pred)
+| Not fm => Not (subst_bvar_iter x n fm)
+| And fm1 fm2 => And (subst_bvar_iter x n fm1) (subst_bvar_iter x n fm2)
+| Or fm1 fm2 => Or (subst_bvar_iter x n fm1) (subst_bvar_iter x n fm2)
+| Implies fm1 fm2 => Implies (subst_bvar_iter x n fm1) (subst_bvar_iter x n fm2)
+| Forall fm => Forall (subst_bvar_iter x (S n) fm)
+| Exists fm => Exists (subst_bvar_iter x (S n) fm)
+end.
+
+Definition quantify (x : name) (phi : Formula) : Formula :=
+  subst_bvar_iter x 0 phi.
+
+(*
+Global Instance substFormula : Subst Formula :=
+{
+  subst (x : V) (t : Term) (phi : Formula) :=
+  match p with
+  | P n s args => P n s (Vector.map (fun (arg : Term) => subst x t arg) args)
+  end
+}.
+*)
+
+Fixpoint lift_formula (c d : nat) (phi : Formula) : Formula :=
+  match phi with
+  | Falsum => phi
+  | Atom pred => Atom (lift c d pred)
+  | Not fm => Not (lift_formula c d fm)
+  | And fm1 fm2 => And (lift_formula c d fm1) (lift_formula c d fm2)
+  | Or fm1 fm2 => Or (lift_formula c d fm1) (lift_formula c d fm2)
+  | Implies fm1 fm2 => Implies (lift_formula c d fm1) (lift_formula c d fm2)
+  | Forall fm => Forall (lift_formula (S c) d fm)
+  | Exists fm => Exists (lift_formula (S c) d fm)
+  end.
+
+Global Instance LiftFormula : Lift Formula :=
+{
+  lift := lift_formula
+}.
 (**
 We would encode $\forall x\exists y P(x,y)$ as 
 [Forall (Exists (Atom (P 2 "P" [BVar 1; BVar 0])))], using de Bruijn indices.
@@ -649,7 +709,22 @@ Check Forall (Exists (Atom (P 2 "P" [Var (BVar 1); Var (BVar 0)]))).
 
 (* TODO: have helper functions like [every "x" <formula>] to produce an 
 [Forall <modified formula>], and [some "x" <formula>] to produce an 
-[Exists <modified formula>]. *)
+[Exists <modified formula>]. 
+
+This can also handle lifting and replacement.
+*)
+Definition every (n : name) (phi : Formula) : Formula :=
+  Forall (quantify n (shift phi)).
+
+Definition any (n : name) (phi : Formula) : Formula :=
+  Exists (quantify n (shift phi)).
+
+Compute (every "x" (any "y" (Atom (P 2 "P" [Var (FVar "x"); Var (FVar "y")])))).
+Example quantifier_example_1 : (every "x" (any "y" (Atom (P 2 "P" [Var (FVar "x"); Var (FVar "y")]))))
+= Forall (Exists (Atom (P 2 "P" [Var (BVar 1); Var (BVar 0)]))).
+Proof.
+  trivial.
+Qed.
 
 (** ** Rules of Natural Deduction *)
 Reserved Notation "Γ ⊢ P" (no associativity, at level 61).
