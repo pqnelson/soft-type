@@ -6,11 +6,17 @@ Import ListNotations.
 Import VectorNotations.
 Open Scope string_scope.
 
+(** * Introduction
+
+We have a couple of helper type classes for recurring functions expected on
+constructs, things like [eqb] for boolean equality testing, and [subst] for
+substituting a [Term] for a [V]ariable.
+*)
+
 Class Eq A :=
   {
     eqb: A -> A -> bool;
   }.
-Print Vector.cons.
 
 Fixpoint list_eqb {A : Type} (v1 v2 : list A) (eq : A -> A -> bool) : bool :=
   match v1,v2 with
@@ -27,6 +33,18 @@ Global Instance stringEq : Eq string := {
   eqb := String.eqb
 }.
 
+(** * Soft Type System
+
+We begin formalizing our soft type system by defining variables and terms,
+and the other syntactic constructs. Then we will inductively define the rules
+of inference for the soft type system.
+
+** Names and Variables
+
+We use locally nameless encoding of bound variables. Free variables are any
+arbitrary [name] instances. Bound variables are de Bruijn indices.
+*)
+
 Definition name : Type := string.
 
 Inductive V :=
@@ -42,9 +60,10 @@ Global Instance VEq : Eq V := {
   end
 }.
 
-(** *** Terms
+(** ** Terms
 
-A [Term] is either a variable, or an n-ary function. Constants are just nullary functions.
+A [Term] is either a variable, or an n-ary function. Constants are just nullary 
+functions.
 *)
 
 Inductive Term : Type :=
@@ -97,9 +116,10 @@ Definition term_is_fun (t : Term) : Prop :=
   | _ => False
   end.
 
-(** *** Radix Types
+(** ** Radix Types
 
-These are "mother types". In full Mizar, this is either a [Mode] or a [Struct] or a set (what we call [Ast]).
+These are "mother types". In full Mizar, this is either a [Mode] or a [Struct] 
+or a set (what we call [Ast]).
 *)
 Inductive Radix : Type :=
 | Ast : Radix
@@ -138,10 +158,11 @@ Global Instance substRadix : Subst Radix :=
   end
 }.
 
-(** *** Attributes
+(** ** Attributes
 
-Attributes may be prepended to types, when registered in an existential cluster. Otherwise, we can create a formula
-[Term is Attribute]. *)
+Attributes may be prepended to types, when registered in an existential cluster.
+Otherwise, we can create a formula [Term is Attribute]. 
+*)
 
 Inductive Attribute : Type := 
 | Attr : forall (n : nat), name -> Vector.t Term n -> Attribute.
@@ -163,7 +184,7 @@ Global Instance substAttr : Subst Attribute :=
   end
 }.
 
-(** *** Adjectives
+(** ** Adjectives
 
 An adjective is either a "positive [Attribute]" or a "negative [Attribute]".
 *)
@@ -189,6 +210,11 @@ Global Instance substAdj : Subst Adjective := {
   end
 }.
 
+(* ** Soft Types
+
+We can encode a [SoftType] as an ordered pair of a list of [Adjective] and
+a [Radix] type.
+*)
 Definition SoftType : Type := (list Adjective)*Radix.
 Definition Star : SoftType := (List.nil, Ast).
 
@@ -218,7 +244,8 @@ Definition mk_mode {n} (M : name) (args : Vector.t Term n) : SoftType :=
 
 Definition prefix (a : Adjective) (T : SoftType) : SoftType :=
   match T with
-  | (adjs, R) => if List.existsb (fun (adj : Adjective) => eqb a adj) adjs then T else (List.cons a adjs, R)
+  | (adjs, R) => if List.existsb (fun (adj : Adjective) => eqb a adj) adjs 
+                 then T else (List.cons a adjs, R)
   end.
 
 Fixpoint prefix_all (adjs : list Adjective) (T : SoftType) : SoftType :=
@@ -233,7 +260,7 @@ Definition non (a : Adjective) : Adjective :=
   | Neg attr => Pos attr
   end.
 
-(** *** Judgement Types *)
+(** ** Judgement Types *)
 Definition Decl : Type := V*SoftType.
 
 Inductive JudgementType :=
@@ -257,8 +284,8 @@ Global Instance substJudgementType : Subst JudgementType := {
 Definition LocalContext := list Decl.
 
 (**
-Given a [LocalContext], we can turn it into a vector of variables, to be used as the arguments for
-a [Term], [Attribute], or [SoftType] (or whatever).
+Given a [LocalContext], we can turn it into a vector of variables, to be used as
+the arguments for a [Term], [Attribute], or [SoftType] (or whatever).
 *)
 Fixpoint local_vars (lc : LocalContext) : Vector.t Term (List.length lc) :=
   match lc with
@@ -443,7 +470,8 @@ References relevant:
 
 (** ** Predicates
 
-We encode the syntax of a predicate, analogous to [Term], as its arity [n : nat], its [name], and its arguments as a [Vector.t Term].
+We encode the syntax of a predicate, analogous to [Term], as its arity 
+[n : nat], its [name], and its arguments as a [Vector.t Term].
 *)
 Inductive Predicate : Type := 
 | P : forall (n : nat), name -> Vector.t Term n -> Predicate.
@@ -481,14 +509,15 @@ Inductive Formula : Type :=
 | Exists : Formula -> Formula.
 
 (**
-We would encode $\forall x\exists y P(x,y)$ as [Forall (Exists (Atom (P 2 "P" [BVar 1; BVar 0])))],
-using de Bruijn indices.
+We would encode $\forall x\exists y P(x,y)$ as 
+[Forall (Exists (Atom (P 2 "P" [BVar 1; BVar 0])))], using de Bruijn indices.
 *)
 Check Forall (Exists (Atom (P 2 "P" [Var (BVar 1); Var (BVar 0)]))).
 
 
-(* TODO: have helper functions like [every "x" <formula>] to produce an [Forall <modified formula>],
-and [some "x" <formula>] to produce an [Exists <modified formula>]. *)
+(* TODO: have helper functions like [every "x" <formula>] to produce an 
+[Forall <modified formula>], and [some "x" <formula>] to produce an 
+[Exists <modified formula>]. *)
 
 (** ** Rules of Natural Deduction *)
 Reserved Notation "Γ ⊢ P" (no associativity, at level 61).
@@ -501,11 +530,11 @@ where "Γ ⊢ P" := (deducible Γ P).
 
 Definition proves (fm : Formula) : Prop := deducible List.nil fm.
 
-Check not.
-
 (** * Translation of Soft Types to First-Order Logic 
 
-We now have a mapping [|.|] of soft types, judgements, and related linguistic constructs, to first-order logic.
+We now have a mapping [|.|] of soft types, judgements, and related linguistic
+constructs, to first-order logic.
+
 For now, this is just a mocked stub.
 *)
 Class Translatable A :=
