@@ -130,10 +130,25 @@ Global Instance EqTerm : Eq Term := {
   eqb := term_eqb
 }.
 
+(** *** Substitution Type Class
+
+We will want to substitute a term for a variable frequently in many syntactic
+constructs. Towards that end, we have a [Subst] type class.
+
+We may also want to do this with a vector of variables and a vector of terms,
+both vectors of the same length. Fortunately, we only have to define this
+"many-folded substitution" function only once.
+*)
 Class Subst A : Type := 
 {
   subst : V -> Term -> A -> A
 }.
+
+Fixpoint subst_many {n} {A : Type} `{Subst A} (vars : Vector.t V n) (terms : Vector.t Term n) (a : A) : A :=
+match vars, terms with
+| x::xs, t::tms => subst_many xs (Vector.tl terms) (subst x t a)
+| _, _ => a
+end.
 
 (* HACK: since Coq cannot handle recursive typeclasses, we isolate the only
 recursive substitution here.
@@ -148,6 +163,17 @@ end.
 Global Instance substTerm : Subst Term :=
 {
   subst (x : V) (t : Term) (e : Term) := tsubst x t e
+}.
+
+Fixpoint tlift (c d : nat) (t : Term) : Term :=
+match t with
+| Var y => Var (lift c d y)
+| Fun n f args => Fun n f (Vector.map (fun (a : Term) => tlift c d a) args)
+end.
+
+Global Instance liftTerm : Lift Term :=
+{
+  lift := tlift
 }.
 
 Definition term_is_fun (t : Term) : Prop :=
@@ -198,6 +224,15 @@ Global Instance substRadix : Subst Radix :=
   end
 }.
 
+Global Instance liftRadix : Lift Radix :=
+{
+  lift (c d : nat) (R : Radix) :=
+  match R with
+  | Ast => R
+  | Mode n s args => Mode n s (Vector.map (fun (a : Term) => lift c d a) args)
+  end
+}.
+
 (** ** Attributes
 
 Attributes may be prepended to types, when registered in an existential cluster.
@@ -221,6 +256,14 @@ Global Instance substAttr : Subst Attribute :=
   subst (x : V) (t : Term) (a : Attribute) :=
   match a with
   | Attr n s args => Attr n s (Vector.map (fun (arg : Term) => subst x t arg) args)
+  end
+}.
+
+Global Instance liftAttr : Lift Attribute :=
+{
+  lift (c d : nat) (a : Attribute) :=
+  match a with
+  | Attr n s args => Attr n s (Vector.map (fun (a : Term) => lift c d a) args)
   end
 }.
 
@@ -250,6 +293,15 @@ Global Instance substAdj : Subst Adjective := {
   end
 }.
 
+Global Instance liftAdj : Lift Adjective :=
+{
+  lift (c d : nat) (alpha : Adjective) :=
+  match alpha with
+  | Pos a => Pos (lift c d a)
+  | Neg a => Neg (lift c d a)
+  end
+}.
+
 (* ** Soft Types
 
 We can encode a [SoftType] as an ordered pair of a list of [Adjective] and
@@ -270,6 +322,14 @@ Global Instance substSoftType : Subst SoftType := {
   match T with
   | (List.nil, R) => (List.nil, subst x t R)
   | (adjs, R) => (List.map (fun (a : Adjective) => subst x t a) adjs, subst x t R)
+  end
+}.
+
+Global Instance liftSoftType : Lift SoftType :=
+{
+  lift (c d : nat) (T : SoftType) :=
+  match T with
+  | (adjs, R) => (List.map (fun (a : Adjective) => (lift c d a)) adjs, lift c d R)
   end
 }.
 
@@ -320,11 +380,29 @@ Global Instance substJudgementType : Subst JudgementType := {
   end
 }.
 
+Global Instance liftJudgementType : Lift JudgementType := {
+  lift (c d : nat) (J : JudgementType) :=
+  match J with
+  | Context => J
+  | Esti tm Tp => Esti (lift c d tm) (lift c d Tp)
+  | Subtype T1 T2 => Subtype (lift c d T1) (lift c d T2)
+  | Inhabited T => Inhabited (lift c d T)
+  | HasAttribute a T => HasAttribute (lift c d a) (lift c d T)
+  end
+}.
+
 (** ** Local Contexts
 
 A local context is just a finite list of [Decl] (declaration of variables and
 their types). We will turn this into arguments for a [Term] (or [Attribute], 
 or...), so we have a [local_vars] helper function to accomodate this.
+
+
+TODO: I think this is not quite right. Using locally nameless terms, a 
+declaration simplifies to just a [SoftType]. Then a [LocalContext] is just
+a list of [Decl].
+
+TODO 2: Think hard about whether lifting is necessary for local contexts.
 *)
 Definition Decl : Type := V*SoftType.
 Definition LocalContext := list Decl.
@@ -498,13 +576,13 @@ Inductive well_typed : Judgement -> Prop :=
   well_typed (Γ ;; Δ |- Subtype (prefix a T) T) ->
   well_typed (List.app Γ (List.cons (Δ, (Esti t (prefix a T))) List.nil) ;; List.nil |- Context)
   (* Rules governing redefinitions *)
-| D_redef_fun : forall (Γ : GlobalContext) (Δ₁ Δ₂ : LocalContext) (t : Term) (T1 T2 T3 : SoftType), 
+| wt_redef_fun : forall (Γ : GlobalContext) (Δ₁ Δ₂ : LocalContext) (t : Term) (T1 T2 T3 : SoftType), 
   term_is_fun t ->
   well_typed (Γ ;; Δ₂ |- Inhabited T2) ->
   well_typed (Γ ;; Δ₂ |- Subtype T2 T3) ->
   well_typed (Γ ;; (List.app Δ₁ Δ₂) |- Esti (fun_with_locals t Δ₂) T3) ->
   well_typed ((List.app Γ (List.cons ((List.app Δ₁ Δ₂), (Esti (fun_with_locals t Δ₂) T3)) List.nil)) ;; List.nil |- Context)
-| D_redef_mode : forall (Γ : GlobalContext) (Δ₁ Δ₂ : LocalContext) (M : Radix) (T1 T2 T3 : SoftType), 
+| wt_redef_mode : forall (Γ : GlobalContext) (Δ₁ Δ₂ : LocalContext) (M : Radix) (T1 T2 T3 : SoftType), 
   radix_is_mode M ->
   well_typed (Γ ;; Δ₂ |- Inhabited T2) ->
   well_typed (Γ ;; Δ₂ |- Subtype T2 T3) ->
