@@ -61,6 +61,15 @@ Global Instance VEq : Eq V := {
   end
 }.
 
+Require Import Coq.Arith.PeanoNat.
+
+Lemma V_eq_dec : forall a b : V, {a = b} + {a <> b}.
+Proof. decide equality.
+  try (left; reflexivity); try (right; congruence).
+  - apply string_dec.
+  - decide equality.
+Defined.
+
 (** We now need to handle [lift]-ing a bound variable. Since this will occur
 wherever a [BVar] can occur (and wherever a [Term] may occur), we will use a
 typeclass to handle this. *)
@@ -113,6 +122,9 @@ functions.
 Inductive Term : Type :=
 | Var : V -> Term
 | Fun : forall (n : nat), name -> Vector.t Term n -> Term.
+
+Definition constant (c : name) : Term :=
+Fun 0 c [].
 
 Fixpoint term_eqb (t1 t2 : Term) : bool :=
 match t1,t2 with
@@ -168,6 +180,32 @@ Global Instance substTerm : Subst Term :=
 {
   subst (x : V) (t : Term) (e : Term) := tsubst x t e
 }.
+
+Compute (subst (BVar 1) (Fun 0 "c" []) (Fun 2 "f" [Var (BVar 1) ; Var (FVar "x")])).
+
+Example term_subst_1 : subst (BVar 1) (Fun 0 "c" []) (Fun 2 "f" [Var (BVar 1) ; Var (FVar "x")])
+= Fun 2 "f" [(Fun 0 "c" []) ; Var (FVar "x")].
+Proof.
+  trivial.
+Qed.
+
+Example term_subst_2 : subst (FVar "x") (Fun 0 "c" []) (Fun 2 "f" [Var (BVar 1) ; Var (FVar "x")])
+= Fun 2 "f" [Var (BVar 1) ; (Fun 0 "c" [])].
+Proof.
+  trivial.
+Qed.
+
+Example term_subst_3 : subst (BVar 3) (Fun 0 "c" []) (Fun 2 "f" [Var (BVar 1) ; Var (FVar "x")])
+= Fun 2 "f" [Var (BVar 1) ; Var (FVar "x")].
+Proof.
+  trivial.
+Qed.
+
+Example term_subst_4 : subst (FVar "z") (Fun 0 "c" []) (Fun 2 "f" [Var (BVar 1) ; Var (FVar "x")])
+= Fun 2 "f" [Var (BVar 1) ; Var (FVar "x")].
+Proof.
+  trivial.
+Qed.
 
 Fixpoint tlift (c d : nat) (t : Term) : Term :=
 match t with
@@ -620,6 +658,12 @@ Global Instance substPred : Subst Predicate :=
   end
 }.
 
+Example pred_subst_1 : subst (BVar 0) (Fun 0 "c" []) (P 3 "P" [Var (BVar 1); Var (BVar 0); Fun 2 "f" [Var (BVar 0); Var (FVar "y")]])
+= (P 3 "P" [Var (BVar 1); (Fun 0 "c" []); Fun 2 "f" [(Fun 0 "c" []); Var (FVar "y")]]).
+Proof.
+  trivial.
+Qed.
+
 Global Instance EqPred : Eq Predicate :=
 {
   eqb (P1 P2 : Predicate) :=
@@ -681,20 +725,57 @@ Global Instance EqFormula : Eq Formula := {
 binder), is a bit tricky. We have a helper function here for the iterative
 step. It behaves "functorially", descending to the leafs, i.e., [Falsum] and
 [Atom]. *)
-Fixpoint subst_bvar_iter (x : name) (n : nat) (phi : Formula) : Formula :=
+Fixpoint var_closing_iter (x : name) (n : nat) (phi : Formula) : Formula :=
 match phi with
 | Falsum => phi
 | Atom pred => Atom (subst (FVar x) (Var (BVar n)) pred)
-| Not fm => Not (subst_bvar_iter x n fm)
-| And fm1 fm2 => And (subst_bvar_iter x n fm1) (subst_bvar_iter x n fm2)
-| Or fm1 fm2 => Or (subst_bvar_iter x n fm1) (subst_bvar_iter x n fm2)
-| Implies fm1 fm2 => Implies (subst_bvar_iter x n fm1) (subst_bvar_iter x n fm2)
-| Forall fm => Forall (subst_bvar_iter x (S n) fm)
-| Exists fm => Exists (subst_bvar_iter x (S n) fm)
+| Not fm => Not (var_closing_iter x n fm)
+| And fm1 fm2 => And (var_closing_iter x n fm1) (var_closing_iter x n fm2)
+| Or fm1 fm2 => Or (var_closing_iter x n fm1) (var_closing_iter x n fm2)
+| Implies fm1 fm2 => Implies (var_closing_iter x n fm1) (var_closing_iter x n fm2)
+| Forall fm => Forall (var_closing_iter x (S n) fm)
+| Exists fm => Exists (var_closing_iter x (S n) fm)
 end.
 
 Definition quantify (x : name) (phi : Formula) : Formula :=
-  subst_bvar_iter x 0 phi.
+  var_closing_iter x 0 phi.
+
+(** Substitution, when replacing a bound variable with an arbitrary term,
+requires care. Why? Because we need to lift the bound variable as we encounter
+quantifiers. 
+
+Particular care must be taken when the term refers to variables or quantities
+in the "context part". Towards that end, we must [lift] the term whenever a
+quantifier is encountered.
+*)
+
+Fixpoint subst_bvar_inner (n : nat) (t : Term) (phi : Formula) : Formula :=
+match phi with
+| Falsum => phi
+| Atom pred => Atom (subst (BVar n) t pred)
+| Not fm => Not (subst_bvar_inner n t fm)
+| And fm1 fm2 => And (subst_bvar_inner n t fm1) (subst_bvar_inner n t fm2)
+| Or fm1 fm2 => Or (subst_bvar_inner n t fm1) (subst_bvar_inner n t fm2)
+| Implies fm1 fm2 => Implies (subst_bvar_inner n t fm1) (subst_bvar_inner n t fm2)
+| Forall fm => Forall (subst_bvar_inner (S n) (lift (S n) 1 t) fm)
+| Exists fm => Exists (subst_bvar_inner (S n) (lift (S n) 1 t) fm)
+end.
+
+(** Specialization and choosing a witness for existential quantification
+amounts to the same "operations" of peeling off an outermost quantifier, then
+behaving as expected. *)
+Definition quantifier_elim_subst (n : nat) (t : Term) (phi : Formula) : Formula :=
+match phi with
+| Forall fm => subst_bvar_inner n t fm
+| Exists fm => subst_bvar_inner n t fm
+| _ => phi
+end.
+
+Example subst_bvar_1 : quantifier_elim_subst 0 (Fun 0 "t" []) (Forall (Exists (Atom (P 2 "P" [Var (BVar 0); Var (BVar 1)]))))
+= Exists (Atom (P 2 "P" [Var (BVar 0); Fun 0 "t" []])).
+Proof.
+  trivial.
+Qed.
 
 Fixpoint lift_formula (c d : nat) (phi : Formula) : Formula :=
   match phi with
@@ -747,14 +828,125 @@ Proof.
   trivial.
 Qed.
 
+Section Terms.
+  Axiom term_eq_dec : forall (x y : Term), {x = y} + {x <> y}.
+  Axiom predicate_eq_dec : forall (x y : Predicate), {x = y} + {x <> y}.
+End Terms.
+
+Lemma Term_eq_dec : forall a b : Term, {a = b} + {a <> b}.
+Proof. apply term_eq_dec. Defined.
+
+Lemma Predicate_eq_dec : forall a b : Predicate, {a = b} + {a <> b}.
+Proof. apply predicate_eq_dec. Defined.
+
+Lemma Formula_eq_dec : forall a b : Formula, {a = b} + {a <> b}.
+Proof. decide equality. apply predicate_eq_dec. Defined.
+
+Class Fresh A : Type := {
+  fresh : name -> A -> Prop
+}.
+
+Fixpoint fresh_term (c : name) (t : Term) : Prop :=
+match t with
+| Var (FVar x) => x = c
+| Var (BVar _) => False
+| Fun n f args => let fix fresh_args {k} (ars : Vector.t Term k) :=
+                  match ars with
+                  | tm::ars1 => (fresh_term c tm) /\ fresh_args ars1
+                  | [] => True
+                  end
+                  in fresh_args args
+end.
+
+Global Instance FreshTerm : Fresh Term := {
+  fresh := fresh_term
+}.
+
+Global Instance FreshPredicate : Fresh Predicate := {
+  fresh (c : name) (p : Predicate) :=
+  match p with
+  | P n s args => Vector.Forall (fun (arg : Term) => fresh c arg) args
+  end
+}.
+
+Fixpoint fresh_formula (c : name) (p : Formula) : Prop :=
+  match p with
+  | Falsum => False
+  | Atom phi => fresh c phi
+  | Not A => fresh_formula c A
+  | And A B | Or A B | Implies A B => (fresh_formula c A) /\ (fresh_formula c B)
+  | Forall A | Exists A => fresh_formula c A
+  end.
+  
+Global Instance FreshFormula : Fresh Formula := {
+  fresh := fresh_formula
+}.
+
+Fixpoint fresh_list (c : name) (Γ : list Formula) : Prop :=
+match Γ with
+| List.nil => True
+| List.cons p Γ' => (fresh c p) /\ (fresh_list c Γ')
+end.
+
+Global Instance FreshContext : Fresh (list Formula) := {
+  fresh := fresh_list
+}.
+  
 
 (** ** Rules of Natural Deduction *)
+Import ListNotations.
 Reserved Notation "Γ ⊢ P" (no associativity, at level 61).
 
 Inductive deducible : list Formula -> Formula -> Prop :=
-| ND_exfalso_quodlibet {Γ P} :
+| ND_exfalso_quodlibet {Γ p} :
   Γ ⊢ Falsum ->
-  Γ ⊢ P
+  Γ ⊢ p
+| ND_assume {Γ p} :
+  List.In p Γ -> 
+  Γ ⊢ p
+| ND_imp_e {Γ p q} :
+  Γ ⊢ Implies p q -> Γ ⊢ p ->
+  Γ ⊢ q
+| ND_imp_i {Γ p q} :
+  List.In p Γ -> Γ ⊢ q ->
+  (List.remove Formula_eq_dec p Γ) ⊢ Implies p q
+| ND_or_intro_l {Γ p q} :
+  Γ ⊢ p ->
+  Γ ⊢ Or p q
+| ND_or_intro_r {Γ p q} :
+  Γ ⊢ q ->
+  Γ ⊢ Or p q
+| ND_proof_by_cases {Γ p q r} :
+  Γ ⊢ Or p q ->
+  p :: Γ ⊢ r ->
+  q :: Γ ⊢ r ->
+  Γ ⊢ r
+| ND_and_intro {Γ P Q} :
+  Γ ⊢ P ->
+  Γ ⊢ Q ->
+  Γ ⊢ And P Q
+| ND_and_elim {Γ P Q R} :
+  Γ ⊢ And P Q ->
+  P :: Q :: Γ ⊢ R ->
+  Γ ⊢ R
+| ND_cut {Γ P Q} :
+  Γ ⊢ P ->
+  P :: Γ ⊢ Q ->
+  Γ ⊢ Q
+| ND_exists_elim {Γ p q c} :
+  Γ ⊢ (Exists p) -> fresh c (List.cons p (List.cons q Γ)) ->
+  (subst_bvar_inner 0 (constant c) p)::Γ ⊢ q ->
+  Γ ⊢ q
+| ND_exists_intro {Γ p c} :
+  Γ ⊢ (subst_bvar_inner 0 (constant c) p) -> 
+  Γ ⊢ Exists p
+| ND_forall_elim {Γ p t} :
+  Γ ⊢ (Forall p) -> 
+  Γ ⊢ (quantifier_elim_subst 0 t p)
+| ND_forall_intro {Γ p c} :
+  Γ ⊢ (subst_bvar_inner 0 (constant c) p) -> 
+  fresh c (List.cons p Γ) ->
+  Γ ⊢ Forall p
 where "Γ ⊢ P" := (deducible Γ P).
 
 Definition proves (fm : Formula) : Prop := deducible List.nil fm.
