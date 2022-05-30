@@ -655,6 +655,28 @@ Inductive Formula : Type :=
 | Forall : Formula -> Formula
 | Exists : Formula -> Formula.
 
+(** We can recursively test if two [Formula] objects are identical. This is an
+equality at the level of syntax. *)
+Fixpoint eq_formula (A B : Formula) : bool :=
+match A,B with
+| Falsum, Falsum => true
+| Atom (P n1 s1 args1), Atom (P n2 s2 args2) => 
+      if andb (eqb n1 n2) (eqb s1 s2)
+      then vectors_eqb args1 args2 term_eqb
+      else false
+| Not A1, Not B1 => eq_formula A1 B1
+| And A1 A2, And B1 B2 => andb (eq_formula A1 B1) (eq_formula A2 B2)
+| Or A1 A2, Or B1 B2 => andb (eq_formula A1 B1) (eq_formula A2 B2)
+| Implies A1 A2, Implies B1 B2 =>  andb (eq_formula A1 B1) (eq_formula A2 B2)
+| Forall A1, Forall B1 => eq_formula A1 B1
+| Exists A1, Exists B1 => eq_formula A1 B1
+| _, _ => false
+end.
+
+Global Instance EqFormula : Eq Formula := {
+  eqb := eq_formula
+}.
+
 (** "Variable closing", or binding a free variable to a quantifier (or any
 binder), is a bit tricky. We have a helper function here for the iterative
 step. It behaves "functorially", descending to the leafs, i.e., [Falsum] and
@@ -673,16 +695,6 @@ end.
 
 Definition quantify (x : name) (phi : Formula) : Formula :=
   subst_bvar_iter x 0 phi.
-
-(*
-Global Instance substFormula : Subst Formula :=
-{
-  subst (x : V) (t : Term) (phi : Formula) :=
-  match p with
-  | P n s args => P n s (Vector.map (fun (arg : Term) => subst x t arg) args)
-  end
-}.
-*)
 
 Fixpoint lift_formula (c d : nat) (phi : Formula) : Formula :=
   match phi with
@@ -707,24 +719,34 @@ We would encode $\forall x\exists y P(x,y)$ as
 Check Forall (Exists (Atom (P 2 "P" [Var (BVar 1); Var (BVar 0)]))).
 
 
-(* TODO: have helper functions like [every "x" <formula>] to produce an 
-[Forall <modified formula>], and [some "x" <formula>] to produce an 
-[Exists <modified formula>]. 
-
-This can also handle lifting and replacement.
+(**
+We now have a helper function to quantify over a given variable. They handle
+lifting and replacement, if the variable appears at all in the [Formula]. If
+[n] does not appear in [Formula], then the formula [phi] is returned unchanged.
 *)
 Definition every (n : name) (phi : Formula) : Formula :=
-  Forall (quantify n (shift phi)).
+  let phi' := quantify n (shift phi)
+  in if eqb phi' (shift phi) then phi else Forall phi'.
 
 Definition any (n : name) (phi : Formula) : Formula :=
-  Exists (quantify n (shift phi)).
+  let phi' := quantify n (shift phi)
+  in if eqb phi' (shift phi) then phi else Exists phi'.
 
-Compute (every "x" (any "y" (Atom (P 2 "P" [Var (FVar "x"); Var (FVar "y")])))).
+(** As a smoke check, we see if variations on a simple formula are "parsed" as
+expected. *)
 Example quantifier_example_1 : (every "x" (any "y" (Atom (P 2 "P" [Var (FVar "x"); Var (FVar "y")]))))
 = Forall (Exists (Atom (P 2 "P" [Var (BVar 1); Var (BVar 0)]))).
 Proof.
   trivial.
 Qed.
+
+Example quantifier_example_2 : 
+  every "z" (any "y" (Atom (P 2 "P" [Var (FVar "x"); Var (FVar "y")])))
+  = Exists (Atom (P 2 "P" [Var (FVar "x"); Var (BVar 0)])).
+Proof.
+  trivial.
+Qed.
+
 
 (** ** Rules of Natural Deduction *)
 Reserved Notation "Γ ⊢ P" (no associativity, at level 61).
