@@ -2,6 +2,7 @@ Require Import String.
 Require Import List.
 Require Import Nat.
 Require Import Coq.Vectors.Vector.
+Require Export Coq.Arith.Compare_dec.
 Import ListNotations.
 Import VectorNotations.
 Open Scope string_scope.
@@ -59,6 +60,45 @@ Global Instance VEq : Eq V := {
   | _, _ => false
   end
 }.
+
+(** We now need to handle [lift]-ing a bound variable. Since this will occur
+wherever a [BVar] can occur (and wherever a [Term] may occur), we will use a
+typeclass to handle this. *)
+
+Class Lift A := {
+  lift : nat -> nat -> A -> A
+}.
+
+Definition shift {A : Type} `{Lift A} (a : A) : A := lift 0 1 a.
+
+Global Instance VLift : Lift V := {
+  lift (cutoff depth : nat) (x : V) :=
+  match x with
+  | FVar nm => x
+  | BVar n => if lt_dec n cutoff then x else BVar (n+depth)
+  end
+}.
+
+(** Lemma: [lift 0 0] is the identity transformation. *)
+Lemma zero_lift_is_id : forall (n : nat), lift 0 0 (BVar n) = (BVar n).
+  intros. simpl. auto.
+Qed.
+
+Theorem case_lift_is_not_id : forall (i k n : nat), k <= n -> lift k i (BVar n) = BVar (n+i).
+  intros. simpl. destruct (lt_dec n k).
+  - contradict H. apply Gt.gt_not_le in l. auto.
+  - auto.
+Qed.
+
+Theorem case_lift_is_id : forall (i k n : nat), k > n -> lift k i (BVar n) = BVar (n).
+  intros. simpl. destruct (lt_dec n k). 
+  - auto.
+  - apply not_lt in n0. contradict n0. apply Gt.gt_not_le in H. trivial.
+Qed.
+
+Example shift_is_not_id : shift (BVar 0) = (BVar 1).
+  trivial.
+Qed.
 
 (** ** Terms
 
@@ -261,7 +301,6 @@ Definition non (a : Adjective) : Adjective :=
   end.
 
 (** ** Judgement Types *)
-Definition Decl : Type := V*SoftType.
 
 Inductive JudgementType :=
 | Context : JudgementType
@@ -281,6 +320,13 @@ Global Instance substJudgementType : Subst JudgementType := {
   end
 }.
 
+(** ** Local Contexts
+
+A local context is just a finite list of [Decl] (declaration of variables and
+their types). We will turn this into arguments for a [Term] (or [Attribute], 
+or...), so we have a [local_vars] helper function to accomodate this.
+*)
+Definition Decl : Type := V*SoftType.
 Definition LocalContext := list Decl.
 
 (**
@@ -291,29 +337,6 @@ Fixpoint local_vars (lc : LocalContext) : Vector.t Term (List.length lc) :=
   match lc with
   | List.cons (x,_) tl => (Var x)::(local_vars tl)
   | List.nil => []
-  end.
-
-
-Definition GlobalContext := list (LocalContext * JudgementType).
-
-(** Judgements of the form [t : T] are where we define new constant terms. *)
-Fixpoint gc_defines_term (gc : GlobalContext) (n : name) : Prop :=
-  match gc with
-  | List.cons (lc, Esti (Fun k nm _) T) tl => (n = nm) \/ gc_defines_term tl n
-  | _ => False
-  end.
-
-Fixpoint gc_defines_type (gc : GlobalContext) (n : name) : Prop :=
-  match gc with
-  | List.cons (lc, Subtype T1 T2) tl => (type_is_named T1 n) \/ (type_is_named T2 n) \/ (gc_defines_type  tl n)
-  | List.cons (lc, Inhabited T) tl =>(type_is_named T n) \/ (gc_defines_type  tl n)
-  | _ => False
-  end.
-
-Fixpoint gc_defines_attr (gc : GlobalContext) (n : name) : Prop :=
-  match gc with
-  | List.cons (lc, HasAttribute (Attr _ a args) T) tl => (a = n) \/ (gc_defines_attr tl n)
-  | _ => False
   end.
 
 (* Helper function to turn a [nat] into a [string]. *)
@@ -335,6 +358,8 @@ Fixpoint string_of_nat_aux (time n : nat) (acc : string) : string :=
 Definition string_of_nat (n : nat) : string :=
   string_of_nat_aux n n "".
 
+(** Given a [LocalContext] and a [Term], we can redefine it using the local
+variables from our [LocalContext]. *)
 Definition fun_with_locals (t : Term) (lc : LocalContext) : Term :=
   match t with
   | Fun n f args => Fun (List.length lc) f (local_vars lc)
@@ -354,6 +379,34 @@ Fixpoint lc_is_subcontext (subcontext lc : LocalContext) : Prop :=
   match subcontext with
   | List.cons (x,T) subcontext' => List.In (x,T) lc /\ lc_is_subcontext subcontext' lc
   | List.nil => True
+  end.
+
+(** ** Global Contexts
+
+We now can track definitions of terms, types, etc., using a [GlobalContext].
+This is encoded as just a list of [JudgementType] and the relevant local 
+variables as found in a [LocalContext].
+*)
+Definition GlobalContext := list (LocalContext * JudgementType).
+
+(** Judgements of the form [t : T] are where we define new constant terms. *)
+Fixpoint gc_defines_term (gc : GlobalContext) (n : name) : Prop :=
+  match gc with
+  | List.cons (lc, Esti (Fun k nm _) T) tl => (n = nm) \/ gc_defines_term tl n
+  | _ => False
+  end.
+
+Fixpoint gc_defines_type (gc : GlobalContext) (n : name) : Prop :=
+  match gc with
+  | List.cons (lc, Subtype T1 T2) tl => (type_is_named T1 n) \/ (type_is_named T2 n) \/ (gc_defines_type  tl n)
+  | List.cons (lc, Inhabited T) tl =>(type_is_named T n) \/ (gc_defines_type  tl n)
+  | _ => False
+  end.
+
+Fixpoint gc_defines_attr (gc : GlobalContext) (n : name) : Prop :=
+  match gc with
+  | List.cons (lc, HasAttribute (Attr _ a args) T) tl => (a = n) \/ (gc_defines_attr tl n)
+  | _ => False
   end.
 
 Fixpoint gc_contains (Γ : GlobalContext) (def : (LocalContext * JudgementType)) : Prop :=
@@ -460,7 +513,8 @@ Inductive well_typed : Judgement -> Prop :=
 
 (** * Natural Deduction
 
-We need to formalize the proof calculus to then prove the correctness of soft type system.
+We need to formalize the proof calculus to then prove the correctness of soft 
+type system.
 
 References relevant:
 
