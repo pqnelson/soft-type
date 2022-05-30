@@ -828,13 +828,25 @@ Proof.
   trivial.
 Qed.
 
-Section Terms.
-  Axiom term_eq_dec : forall (x y : Term), {x = y} + {x <> y}.
-  Axiom predicate_eq_dec : forall (x y : Predicate), {x = y} + {x <> y}.
-End Terms.
+(** ** Rules of Natural Deduction 
+
+We can now encode natural deduction rules using a straightforward inductive
+type. The only subtlety surrounds ensuring a variable [name] is [fresh].
+And that's because I am too lazy to do this adequately. Modeling arguments 
+as vectors screw everything up. But it's obviously not wrong. Let's hope it 
+doesn't destroy correctness ;p 
+*)
+
+Section CavalierAxiomatics.
+(* Look, I placed the dangerous bit in their own section. Everything is
+safe and sound now, right? *)
+Axiom term_eq_dec : forall (x y : Term), {x = y} + {x <> y}.
+Axiom predicate_eq_dec : forall (x y : Predicate), {x = y} + {x <> y}.
+End CavalierAxiomatics.
 
 Lemma Term_eq_dec : forall a b : Term, {a = b} + {a <> b}.
 Proof. apply term_eq_dec. Defined.
+
 
 Lemma Predicate_eq_dec : forall a b : Predicate, {a = b} + {a <> b}.
 Proof. apply predicate_eq_dec. Defined.
@@ -891,9 +903,7 @@ end.
 Global Instance FreshContext : Fresh (list Formula) := {
   fresh := fresh_list
 }.
-  
 
-(** ** Rules of Natural Deduction *)
 Import ListNotations.
 Reserved Notation "Γ ⊢ P" (no associativity, at level 61).
 
