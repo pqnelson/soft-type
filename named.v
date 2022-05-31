@@ -1043,23 +1043,7 @@ Global Instance TranslatableJudgementType : Translatable JudgementType := {
 
 (** Global definitions are a list of definitions, which are a [LocalContext]
 and a [JudgementType]. There may be a clever way to encode this, but I am at
-a loss at the moment. (Granted, I have been doing this for about 12 hours nonstop
-at this point...) *)
-Definition translate_definition (defn : LocalContext*JudgementType) : Formula :=
-match defn with
-| (lc, J) => Verum
-end.
-
-Fixpoint translate_gc (gc : GlobalContext) :=
-match gc with
-| List.nil => Verum
-| List.cons d List.nil => translate_definition d
-| List.cons d tl => And (translate_definition d) (translate_gc tl)
-end.
-
-Global Instance TranslatableGlobalContext : Translatable GlobalContext := {
-  translate := translate_gc
-}.
+a loss at the moment. Instead I will cheat and use Currying. *)
 
 (*
 _         __   _                         _                 __       _ _
@@ -1076,17 +1060,33 @@ _         __   _                         _                 __       _ _
                       |___/
 
 *)
+Fixpoint translate_antecedent (lc : LocalContext) (j : JudgementType) : Formula :=
+match lc with
+| List.nil => translate j
+| List.cons (_,T) List.nil => Forall (Implies (translate T) (translate j))
+| List.cons (_,T) tl => Forall (Implies (translate T) (translate_antecedent tl j))
+end.
+
+Definition translate_definition (defn : LocalContext*JudgementType) : Formula :=
+match defn with
+| (lc, J) => translate_antecedent lc J
+end.
+
+Fixpoint translate_gc (gc : GlobalContext) :=
+match gc with
+| List.nil => Verum
+| List.cons d List.nil => translate_definition d
+| List.cons d tl => And (translate_definition d) (translate_gc tl)
+end.
+
+Global Instance TranslatableGlobalContext : Translatable GlobalContext := {
+  translate := translate_gc
+}.
+
 Global Instance TranslatableJudgement : Translatable Judgement := {
 translate (judge : Judgement) :=
-let fix tr_antecedent (lc : LocalContext) (j : JudgementType) : Formula :=
-    match lc with
-    | List.nil => translate j
-    | List.cons (_,T) List.nil => Forall (Implies (translate T) (translate j))
-    | List.cons (_,T) tl => Forall (Implies (translate T) (tr_antecedent tl j))
-    end
-in
   match judge with
-  | (Γ, Δ, j) => Implies (translate Γ) (tr_antecedent Δ j)
+  | (Γ, Δ, j) => Implies (translate Γ) (translate_antecedent Δ j)
   end
 }.
 
