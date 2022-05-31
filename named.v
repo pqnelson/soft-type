@@ -113,6 +113,11 @@ Proof.
   trivial.
 Qed.
 
+Example shift_really_shifts : forall (n : nat), shift (BVar n) = BVar (n + 1).
+Proof.
+  trivial.
+Qed.
+
 (** ** Terms
 
 A [Term] is either a variable, or an n-ary function. Constants are just nullary 
@@ -691,6 +696,7 @@ minimal set of connectives seemed _too_ slick for my tastes.
 *)
 Inductive Formula : Type :=
 | Falsum
+| Verum
 | Atom : Predicate -> Formula
 | Not : Formula -> Formula
 | And : Formula -> Formula -> Formula
@@ -704,6 +710,7 @@ equality at the level of syntax. *)
 Fixpoint eq_formula (A B : Formula) : bool :=
 match A,B with
 | Falsum, Falsum => true
+| Verum, Verum => true
 | Atom (P n1 s1 args1), Atom (P n2 s2 args2) => 
       if andb (eqb n1 n2) (eqb s1 s2)
       then vectors_eqb args1 args2 term_eqb
@@ -727,7 +734,7 @@ step. It behaves "functorially", descending to the leafs, i.e., [Falsum] and
 [Atom]. *)
 Fixpoint var_closing_iter (x : name) (n : nat) (phi : Formula) : Formula :=
 match phi with
-| Falsum => phi
+| Falsum | Verum => phi
 | Atom pred => Atom (subst (FVar x) (Var (BVar n)) pred)
 | Not fm => Not (var_closing_iter x n fm)
 | And fm1 fm2 => And (var_closing_iter x n fm1) (var_closing_iter x n fm2)
@@ -751,7 +758,7 @@ quantifier is encountered.
 
 Fixpoint subst_bvar_inner (n : nat) (t : Term) (phi : Formula) : Formula :=
 match phi with
-| Falsum => phi
+| Falsum | Verum => phi
 | Atom pred => Atom (subst (BVar n) t pred)
 | Not fm => Not (subst_bvar_inner n t fm)
 | And fm1 fm2 => And (subst_bvar_inner n t fm1) (subst_bvar_inner n t fm2)
@@ -764,10 +771,14 @@ end.
 (** Specialization and choosing a witness for existential quantification
 amounts to the same "operations" of peeling off an outermost quantifier, then
 behaving as expected. *)
-Definition quantifier_elim_subst (n : nat) (t : Term) (phi : Formula) : Formula :=
+Fixpoint quantifier_elim_subst (n : nat) (t : Term) (phi : Formula) : Formula :=
 match phi with
 | Forall fm => subst_bvar_inner n t fm
 | Exists fm => subst_bvar_inner n t fm
+| Not A => Not (quantifier_elim_subst n t A)
+| And A B => And (quantifier_elim_subst n t A) (quantifier_elim_subst n t B)
+| Or A B => Or (quantifier_elim_subst n t A) (quantifier_elim_subst n t B)
+| Implies A B => Implies (quantifier_elim_subst n t A) (quantifier_elim_subst n t B)
 | _ => phi
 end.
 
@@ -779,7 +790,7 @@ Qed.
 
 Fixpoint lift_formula (c d : nat) (phi : Formula) : Formula :=
   match phi with
-  | Falsum => phi
+  | Falsum | Verum => phi
   | Atom pred => Atom (lift c d pred)
   | Not fm => Not (lift_formula c d fm)
   | And fm1 fm2 => And (lift_formula c d fm1) (lift_formula c d fm2)
@@ -883,7 +894,8 @@ Global Instance FreshPredicate : Fresh Predicate := {
 
 Fixpoint fresh_formula (c : name) (p : Formula) : Prop :=
   match p with
-  | Falsum => False
+  | Falsum => True
+  | Verum => True
   | Atom phi => fresh c phi
   | Not A => fresh_formula c A
   | And A B | Or A B | Implies A B => (fresh_formula c A) /\ (fresh_formula c B)
@@ -911,6 +923,8 @@ Inductive deducible : list Formula -> Formula -> Prop :=
 | ND_exfalso_quodlibet {Γ p} :
   Γ ⊢ Falsum ->
   Γ ⊢ p
+| ND_True_intro {Γ} :
+  Γ ⊢ Verum
 | ND_assume {Γ p} :
   List.In p Γ -> 
   Γ ⊢ p
@@ -972,9 +986,56 @@ Class Translatable A :=
   {
     translate: A -> Formula;
   }.
+  
+Import VectorNotations.
+  
+Global Instance TranslatableRadix : Translatable Radix := {
+  translate (R : Radix) :=
+  match R with
+  | Ast => Verum
+  | Mode n M args => (Atom (P (S n) (String.append "Mode_" M) ((Var (BVar 0))::(Vector.map shift args))))
+  end
+}.
+  
+Global Instance TranslatableAttr : Translatable Attribute := {
+  translate (attr : Attribute) :=
+  match attr with
+  | Attr n s args => (Atom (P (S n) (String.append "Attr_" s) ((Var (BVar 0))::(Vector.map shift args))))
+  end
+}.
+  
+Global Instance TranslatableAdj : Translatable Adjective := {
+  translate (adj : Adjective) :=
+  match adj with
+  | Pos a => translate a
+  | Neg a => Not (translate a)
+  end
+}.
 
-Global Instance TranslatableJudgement : Translatable Judgement := {
-  translate (J : Judgement) := Falsum
+(* Consider: shift everything by 1, and have [BVar 0] reserved for future
+use in translating judgements. *)
+Global Instance TranslatableSoftType : Translatable SoftType := {
+  translate (T : SoftType) :=
+  match T with
+  | (adjs, R) => let fix tr_adjs (ads : list Adjective) :=
+                     match ads with
+                     | List.cons a tl => And (translate a) (tr_adjs tl)
+                     | List.nil => Verum
+                     end
+                     in And (tr_adjs adjs) (translate R)
+  end
+}.
+
+Global Instance TranslatableJudgementType : Translatable JudgementType := {
+  translate (J : JudgementType) := 
+  match J with
+  | Esti tm Tp => quantifier_elim_subst 0 tm (translate Tp)
+  | Subtype T1 T2 => match (translate T1), (translate T2) with
+                     | A1, A2 => Forall (Implies A1 A2)
+                     end
+  | Inhabited T => Exists (translate T)
+  | _ => Verum
+  end
 }.
 
 (** * Main Results
