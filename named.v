@@ -1061,6 +1061,20 @@ Global Instance TranslatableGlobalContext : Translatable GlobalContext := {
   translate := translate_gc
 }.
 
+(*
+_        __   _                        _                __       _ _
+\ \      / /__( )_ __ ___    __ _  ___ (_)_ __   __ _   / _|_   _| | |
+ \ \ /\ / / _ \/| '__/ _ \  / _` |/ _ \| | '_ \ / _` | | |_| | | | | |
+  \ V  V /  __/ | | |  __/ | (_| | (_) | | | | | (_| | |  _| |_| | | |
+   \_/\_/ \___| |_|  \___|  \__, |\___/|_|_| |_|\__, | |_|  \__,_|_|_|
+                            |___/               |___/
+  ____
+ / ___|   _ _ __ _ __ _   _
+| |  | | | | '__| '__| | | |
+| |__| |_| | |  | |  | |_| |
+ \____\__,_|_|  |_|   \__, |
+                      |___/
+*)
 Global Instance TranslatableJudgement : Translatable Judgement := {
 translate (judge : Judgement) :=
 let fix tr_antecedent (lc : LocalContext) (j : JudgementType) : Formula :=
