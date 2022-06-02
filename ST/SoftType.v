@@ -133,17 +133,20 @@ logic easier later on.
 
 Inductive Term : Type :=
 | Var : V -> Term
+| Fun {n} : name -> Vector.t Term n -> Term
+(*
 | Fun : forall (n : nat), name -> Vector.t Term n -> Term
+*)
 | EConst : nat -> Term.
 
 Definition constant (c : name) : Term :=
-Fun 0 c [].
+@Fun 0 c [].
 
 Fixpoint term_eqb (t1 t2 : Term) : bool :=
 match t1,t2 with
 | Var x1, Var x2 => eqb x1 x2
 | EConst n1, EConst n2 => eqb n1 n2
-| Fun n1 s1 args1, Fun n2 s2 args2 => 
+| @Fun n1 s1 args1, @Fun n2 s2 args2 => 
   let fix args_eqb {n1 n2} (ar1 : Vector.t Term n1) (ar2 : Vector.t Term n2) : bool :=
       match ar1,ar2 with
       | Vector.nil _, Vector.nil _ => true
@@ -187,7 +190,7 @@ See: https://stackoverflow.com/a/52349387 *)
 Fixpoint tsubst (x : V) (t : Term) (e : Term) : Term :=
 match e with
 | Var y => if eqb x y then t else e
-| Fun n f args => Fun n f (Vector.map (fun (a : Term) => tsubst x t a) args)
+| @Fun n f args => @Fun n f (Vector.map (fun (a : Term) => tsubst x t a) args)
 | EConst _ => e
 end.
 
@@ -196,28 +199,28 @@ Global Instance substTerm : Subst Term :=
   subst (x : V) (t : Term) (e : Term) := tsubst x t e
 }.
 
-Compute (subst (BVar 1) (Fun 0 "c" []) (Fun 2 "f" [Var (BVar 1) ; Var (FVar "x")])).
+Compute (subst (BVar 1) (Fun "c" []) (Fun "f" [Var (BVar 1) ; Var (FVar "x")])).
 
-Example term_subst_1 : subst (BVar 1) (Fun 0 "c" []) (Fun 2 "f" [Var (BVar 1) ; Var (FVar "x")])
-= Fun 2 "f" [(Fun 0 "c" []) ; Var (FVar "x")].
+Example term_subst_1 : subst (BVar 1) (Fun "c" []) (Fun "f" [Var (BVar 1) ; Var (FVar "x")])
+= Fun "f" [(Fun "c" []) ; Var (FVar "x")].
 Proof.
   trivial.
 Qed.
 
-Example term_subst_2 : subst (FVar "x") (Fun 0 "c" []) (Fun 2 "f" [Var (BVar 1) ; Var (FVar "x")])
-= Fun 2 "f" [Var (BVar 1) ; (Fun 0 "c" [])].
+Example term_subst_2 : subst (FVar "x") (Fun "c" []) (Fun "f" [Var (BVar 1) ; Var (FVar "x")])
+= Fun "f" [Var (BVar 1) ; (Fun "c" [])].
 Proof.
   trivial.
 Qed.
 
-Example term_subst_3 : subst (BVar 3) (Fun 0 "c" []) (Fun 2 "f" [Var (BVar 1) ; Var (FVar "x")])
-= Fun 2 "f" [Var (BVar 1) ; Var (FVar "x")].
+Example term_subst_3 : subst (BVar 3) (Fun "c" []) (Fun "f" [Var (BVar 1) ; Var (FVar "x")])
+= Fun "f" [Var (BVar 1) ; Var (FVar "x")].
 Proof.
   trivial.
 Qed.
 
-Example term_subst_4 : subst (FVar "z") (Fun 0 "c" []) (Fun 2 "f" [Var (BVar 1) ; Var (FVar "x")])
-= Fun 2 "f" [Var (BVar 1) ; Var (FVar "x")].
+Example term_subst_4 : subst (FVar "z") (Fun "c" []) (Fun "f" [Var (BVar 1) ; Var (FVar "x")])
+= Fun "f" [Var (BVar 1) ; Var (FVar "x")].
 Proof.
   trivial.
 Qed.
@@ -225,7 +228,7 @@ Qed.
 Fixpoint tlift (c d : nat) (t : Term) : Term :=
 match t with
 | Var y => Var (lift c d y)
-| Fun n f args => Fun n f (Vector.map (fun (a : Term) => tlift c d a) args)
+| Fun f args => Fun f (Vector.map (fun (a : Term) => tlift c d a) args)
 | EConst _ => t
 end.
 
@@ -236,7 +239,7 @@ Global Instance liftTerm : Lift Term :=
 
 Definition term_is_fun (t : Term) : Prop :=
   match t with
-  | Fun _ _ _ =>  True
+  | Fun _ _ =>  True
   | _ => False
   end.
 
@@ -498,11 +501,11 @@ Definition string_of_nat (n : nat) : string :=
 variables from our [LocalContext]. *)
 Definition fun_with_locals (t : Term) (lc : LocalContext) : Term :=
   match t with
-  | Fun n f args => Fun (List.length lc) f (local_vars lc)
+  | Fun f args => Fun f (local_vars lc)
   | EConst _ => t
   | Var var => match var with
-               | FVar x => Fun (List.length lc) x (local_vars lc)
-               | BVar n => Fun (List.length lc) ("BoundVar_" ++ string_of_nat n) (local_vars lc)
+               | FVar x => Fun x (local_vars lc)
+               | BVar n => Fun ("BoundVar_" ++ string_of_nat n) (local_vars lc)
                end
   end.
   
@@ -529,7 +532,7 @@ Definition GlobalContext := list (LocalContext * JudgementType).
 (** Judgements of the form [t : T] are where we define new constant terms. *)
 Fixpoint gc_defines_term (gc : GlobalContext) (n : name) : Prop :=
   match gc with
-  | List.cons (lc, Esti (Fun k nm _) T) tl => (n = nm) \/ gc_defines_term tl n
+  | List.cons (lc, Esti (Fun nm _) T) tl => (n = nm) \/ gc_defines_term tl n
   | _ => False
   end.
 
@@ -616,7 +619,7 @@ Inductive well_typed : Judgement -> Prop :=
 | wt_functor_def : forall (Γ : GlobalContext) (Δ : LocalContext) (T : SoftType) (f : name),
   not (gc_defines_term Γ f) ->
   well_typed (Γ ;; Δ |- Inhabited T) ->
-  well_typed ((List.app Γ (List.cons (Δ, (Esti (Fun (List.length Δ) f (local_vars Δ)) T)) List.nil)) ;; List.nil |- CorrectContext)
+  well_typed ((List.app Γ (List.cons (Δ, (Esti (Fun f (local_vars Δ)) T)) List.nil)) ;; List.nil |- CorrectContext)
 | wt_mode_def : forall (Γ : GlobalContext) (Δ : LocalContext) (T : SoftType) (M : name), 
   not (gc_defines_type Γ M) ->
   well_typed (Γ ;; Δ |- Inhabited T) ->  

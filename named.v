@@ -3,6 +3,9 @@ Require Import List.
 Require Import Nat.
 Require Import Coq.Vectors.Vector.
 Require Export Coq.Arith.Compare_dec.
+Require Export List.
+Require Export RelationClasses.
+Require Export Morphisms.
 Import ListNotations.
 Import VectorNotations.
 Open Scope string_scope.
@@ -549,14 +552,20 @@ We can now code up the inference rules for Wiedijk's soft type system inductivel
 *)
 Definition Judgement : Type := GlobalContext * LocalContext * JudgementType.
 
+Definition push {A : Type} (a : A) (l : list A) : list A :=
+  List.app l (List.cons a List.nil).
+
 Notation "gc ;; lc |- j" := (gc, lc, j) (at level 80).
 Inductive well_typed : Judgement -> Prop :=
 | wt_empty_context : well_typed (List.nil ;; List.nil |- Context)
+| wt_var : forall (Γ : GlobalContext) (Δ : LocalContext) (x : V) (T : SoftType) (J : JudgementType),
+  well_typed (Γ ;; Δ |- Inhabited T) ->
+  well_typed (Γ ;; (push (x,T) Δ) |- Context)
 (* TODO: substitution rule for a vector of declarations *)
 | wt_subst : forall (Γ : GlobalContext) (Δ : LocalContext) (x : V) (t : Term) (T : SoftType) (J : JudgementType),
   gc_contains Γ ((List.cons (x,T) List.nil), J) ->
   well_typed (Γ ;; Δ |- Esti t T) ->
-  well_typed (Γ ;; Δ |- (subst x t Context))
+  well_typed (Γ ;; Δ |- (subst x t J))
 (* TODO: inhabited types produce new local variables *)
 | wt_subtype_star_star : forall (Γ : GlobalContext) (Δ : LocalContext),
   well_typed (Γ ;; Δ |- Context) ->
@@ -934,9 +943,13 @@ Inductive deducible : list Formula -> Formula -> Prop :=
 | ND_imp_e {Γ p q} :
   Γ ⊢ Implies p q -> Γ ⊢ p ->
   Γ ⊢ q
+  (*
 | ND_imp_i {Γ p q} :
   List.In p Γ -> Γ ⊢ q ->
   (List.remove Formula_eq_dec p Γ) ⊢ Implies p q
+  *)
+| ND_imp_i2 {Γ p q} :
+  p::Γ ⊢ q -> Γ ⊢ Implies p q
 | ND_or_intro_l {Γ p q} :
   Γ ⊢ p ->
   Γ ⊢ Or p q
@@ -977,6 +990,177 @@ Inductive deducible : list Formula -> Formula -> Prop :=
 where "Γ ⊢ P" := (deducible Γ P).
 
 Definition proves (fm : Formula) : Prop := deducible List.nil fm.
+
+Hint Unfold GlobalContext LocalContext : typeclass_instances.
+Hint Constructors well_typed deducible : core.
+
+Theorem Verum_implies_Verum :
+  proves (Implies Verum Verum).
+Proof. 
+  unfold proves; auto.
+Qed.
+
+
+Definition subcontext (Γ1 Γ2 : list Formula) : Prop :=
+  forall P, List.In P Γ1 -> List.In P Γ2.
+  
+Definition supcontext (Γ1 Γ2 : list Formula) : Prop :=
+  subcontext Γ2 Γ1.
+Infix "⊆" := subcontext (no associativity, at level 70).
+Infix "⊇" := supcontext (no associativity, at level 70).
+
+Lemma cons_subcontext : forall (Γ : list Formula) (P : Formula),
+  Γ ⊆ List.cons P Γ.
+Proof.
+  intros. right. assumption.
+Qed.
+
+Lemma subcontext_cons : forall (Γ1 Γ2 : list Formula) (P : Formula),
+  P :: Γ1 ⊆ Γ2 <-> List.In P Γ2 /\ Γ1 ⊆ Γ2.
+Proof.
+  split; intros; repeat split.
+  - apply H; left; reflexivity.
+  - intros x ?; apply H; right; assumption.
+  - destruct H. intro x; destruct 1; subst; auto.
+Qed.
+
+
+Ltac prove_In :=
+match goal with
+| |- In ?P (?P :: ?Γ) => left; reflexivity
+| |- In ?P (?Q :: ?Γ) => right; prove_In
+end.
+Ltac prove_subcontext :=
+match goal with
+| |- ?P :: ?Γ ⊆ ?Γ' => rewrite subcontext_cons; split;
+     [ prove_In | prove_subcontext ]
+| |- ?Γ ⊆ ?Γ => reflexivity
+| |- ?Γ ⊆ ?P :: ?Γ' => rewrite <- (cons_subcontext P Γ');
+                       prove_subcontext
+end.
+
+Import ListNotations.
+Open Scope list.
+
+Lemma subcontext_trans : forall (Γ1 Γ2 Γ3 : list Formula),
+  Γ1 ⊆ Γ2 -> Γ2 ⊆ Γ3 -> Γ1 ⊆ Γ3.
+Proof.
+  intros. unfold subcontext in H; unfold subcontext in H0; unfold subcontext. auto.
+Qed.
+  
+Lemma subcontext_weaken : forall (Γ1 Γ2 : list Formula) (P : Formula),
+  Γ1 ⊆ Γ2 -> Γ1 ⊆ P :: Γ2.
+Proof.
+  intros. assert (Γ2 ⊆ (List.cons P0 Γ2)). apply cons_subcontext.
+  apply (subcontext_trans Γ1 Γ2 (P0 :: Γ2)) in H0. assumption. assumption.
+Qed.
+  
+Lemma subcontext_weaken2 : forall (Γ1 Γ2 : list Formula) (P : Formula),
+  Γ1 ⊆ Γ2 -> P :: Γ1 ⊆ P :: Γ2.
+Proof.
+  intros. assert (Γ2 ⊆ (List.cons P0 Γ2)). apply cons_subcontext.
+  apply subcontext_cons. split; unfold List.In; auto. apply (subcontext_trans Γ1 Γ2 (P0 :: Γ2)).
+  assumption. assumption.
+Qed.
+
+Lemma subcontext_reflex : forall (Γ : list Formula), Γ ⊆ Γ.
+Proof.
+  intros; unfold subcontext; auto.
+Qed.
+
+(*
+Require Export List.
+Require Export RelationClasses.
+Require Export Morphisms.
+*)
+
+Global Instance subcontext_preord : PreOrder subcontext.
+Proof.
+constructor.
++ intro Γ. red. trivial.
++ intros Γ₁ Γ₂ Γ₃; unfold subcontext. auto.
+Qed.
+
+Global Instance subcontext_cons_proper :
+  Proper (eq ==> subcontext ++> subcontext) (@cons Formula).
+Proof.
+intros P Q [] Γ1 Γ2 ?. rewrite subcontext_cons; split.
++ left; reflexivity.
++ rewrite H. apply cons_subcontext.
+Qed.
+
+Lemma fresh_in_head : forall {c P Γ1 Γ2},
+  (P :: Γ1) ⊆ Γ2 ->
+  fresh c Γ2 -> fresh c P.
+Admitted.
+
+(* Suppose [Subcontext Γ1 Γ2]. If [fresh c Γ2], then [fresh c Γ1]. *)
+Global Instance fresh_cons_proper :
+  Proper (eq ++> subcontext --> Basics.impl) fresh.
+Proof.
+  intros P Q [] Γ1 Γ2 ?. unfold Basics.flip in H. unfold Basics.impl.
+  intros H1.
+  unfold fresh; unfold FreshContext; unfold fresh_list.
+  induction Γ2. auto.
+  assert (Γ2 ⊆ a :: Γ2). apply cons_subcontext.
+  assert (Γ2 ⊆ Γ1).
+  apply (subcontext_trans Γ2 (a :: Γ2) Γ1); assumption; assumption.
+  apply IHΓ2 in H2 as IH; split. apply (fresh_in_head H). assumption.
+  assumption.
+Qed.
+
+Theorem fresh_cons_1 : forall (Γ1 Γ2 : list Formula) (P : Formula) (c : name),
+  Γ1 ⊆ Γ2 -> fresh c (P :: Γ1) -> fresh c (P :: Γ2).
+Admitted.
+
+Theorem fresh_cons_2 : forall (Γ1 Γ2 : list Formula) (P Q : Formula) (c : name),
+  Γ1 ⊆ Γ2 -> fresh c (P :: Q :: Γ1) -> fresh c (P :: Q :: Γ2).
+Admitted.
+(*
+Proof.
+  intros. unfold fresh in H0; unfold FreshContext in H0; unfold fresh_list in H0.
+  unfold fresh; unfold FreshContext; unfold fresh_list. intuition.
+  apply H.
+   set (G1 := Q :: Γ1). set (G2 := Q :: Γ2).
+Admitted.
+*)
+
+Global Instance ND_context_extension :
+  Proper (subcontext ++> eq ==> Basics.impl) deducible.
+Proof.
+intros Γ₁ Γ₂ ? P Q [] ?. revert Γ₂ H. induction H0; intros.
++ apply ND_exfalso_quodlibet. auto.
++ apply ND_True_intro.
++ apply ND_assume. auto.
++ apply (ND_imp_e (p := p)); auto.
++ apply ND_imp_i2. apply IHdeducible. f_equiv. auto.
++ apply ND_or_intro_l. auto.
++ apply ND_or_intro_r. auto.
++  apply (ND_proof_by_cases (p := p) (q := q)); auto.
+  - apply IHdeducible2. f_equiv. assumption.
+  - apply IHdeducible3. f_equiv. assumption.
++ apply ND_and_intro; auto.
++ apply (ND_and_elim (P := P0) (Q := Q0)); auto.
+  apply IHdeducible2. do 2 f_equiv; assumption.
++ apply (ND_cut (P := P0)); auto.
+  apply IHdeducible2. f_equiv. assumption.
++ apply (ND_exists_elim (p := p) (q := q) (c := c)). auto.
+  apply (fresh_cons_2 Γ Γ₂ p q). assumption. apply H. apply IHdeducible2. f_equiv. assumption.
++ apply (ND_exists_intro (p := p) (c := c)); auto.
++ apply (ND_forall_elim (p := p) (t := t)). auto.
++ apply (ND_forall_intro (p := p) (c := c)). auto.
+  apply (fresh_cons_1 Γ Γ₂ p). apply H1. apply H.
+Qed.
+
+Theorem weakening : forall (Γ1 Γ2 : list Formula) (P : Formula),
+  Γ1 ⊢ P ->
+  Γ1 ⊆ Γ2 ->
+  Γ2 ⊢ P.
+Proof.
+  intros.
+  refine (ND_context_extension _ _ _ _ _ eq_refl H).
+  assumption.
+Qed.
 
 (** * Translation of Soft Types to First-Order Logic 
 
@@ -1093,5 +1277,59 @@ translate (judge : Judgement) :=
 (** * Main Results
 
 We can now articulate the correctness results. *)
-Theorem correctness : forall (Γ : GlobalContext) (Δ : LocalContext) (J : JudgementType),
-  well_typed (Γ ;; Δ |- J) -> proves (translate (Γ ;; Δ |- J)).
+
+(*
+
+Hint Constructors JudgementType Radix Term Adjective : core.
+
+Print HintDb typeclass_instances.
+
+Hint Constructors JudgementType Radix Term Adjective Predicate Formula : typeclass_instances.
+*)
+
+Lemma empty_context_correctness :
+  well_typed (List.nil ;; List.nil |- Context) -> proves (translate (List.nil ;; List.nil |- Context)).
+Proof. 
+  intros; simpl; apply Verum_implies_Verum.
+Qed.
+
+Hint Unfold GlobalContext LocalContext : typeclass_instances.
+Hint Constructors well_typed deducible : core.
+Lemma star_sub_star_correctness :
+  forall (Γ : GlobalContext) (Δ : LocalContext),
+  well_typed (Γ ;; Δ |- Subtype Star Star) -> proves (translate (Γ ;; Δ |- Subtype Star Star)).
+Admitted.
+
+Lemma global_weakening : forall (J : JudgementType) (Γ1 Γ2 : GlobalContext) (Δ : LocalContext),
+  List.incl Γ1 Γ2 ->
+  well_typed (Γ1 ;; Δ |- J) ->
+  well_typed (Γ2 ;; Δ |- J).
+Admitted.
+
+Lemma local_weakening : forall (J : JudgementType) (Γ : GlobalContext) (Δ1 Δ2 : LocalContext),
+  List.incl Δ1 Δ2 ->
+  well_typed (Γ ;; Δ1 |- J) ->
+  well_typed (Γ ;; Δ2 |- J).
+Admitted.
+
+Lemma proves_true_weakening : forall (J1 J2 : JudgementType) (Γ : GlobalContext) (Δ1 Δ2 : LocalContext),
+  List.incl Δ1 Δ2 -> (translate J2 = Verum) ->
+  proves (translate (Γ ;; Δ1 |- J1)) ->
+  proves (translate (Γ ;; Δ2 |- J2)).
+Admitted.
+
+Lemma well_typed_contexts : forall (J : JudgementType) (Γ : GlobalContext) (Δ : LocalContext),
+  well_typed (Γ ;; Δ |- J) ->
+  well_typed (Γ ;; Δ |- Context).
+Admitted.
+
+Hint Unfold translate_antecedent : core.
+Theorem correctness : forall (J : Judgement),
+  well_typed J -> proves (translate J).
+Proof.
+  intros.
+  induction H.
+  - intros; simpl; apply Verum_implies_Verum. (* Γ ;; Δ |- Context *)
+  - intros. simpl. (* Γ;; push (x, T) Δ |- Context *)
+  (* ... and the rest! *)
+Qed.
