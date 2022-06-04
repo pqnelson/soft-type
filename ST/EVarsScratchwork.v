@@ -704,6 +704,7 @@ Proof.
 *)
 Admitted.
 
+(*
 Theorem insert_if_present :
   forall (n : nat) (l : list nat),
   sorted l -> In n l -> insert n l = l.
@@ -733,4 +734,32 @@ Lemma insert_different : forall (a n : nat) (l : list nat),
   sorted (a :: l) -> a <> n ->
   sorted (n :: a :: l) \/ sorted (a :: insert n l).
 
+*)
 
+Fixpoint insert_merge (l1 l2 : list nat) :=
+match l1 with
+| [] => l2
+| a::tl => insert_merge tl (insert a l2)
+end.
+
+Theorem insert_merge_sorted : forall (l1 l2 : list nat),
+  sorted l1 -> sorted l2 -> sorted (insert_merge l1 l2).
+Proof.
+  intros. generalize dependent l2.
+  induction l1.
+  - (* Base case: l1 = nil *)
+    intros. unfold insert_merge; auto.
+  - (* Inductive case: l1 = a::l1 *)
+    intros.
+    assert (forall l2 : list nat, sorted l2 -> sorted (insert_merge l1 l2)). {
+      apply IHl1. apply sorted_tl in H. assumption.
+    }
+    assert (sorted (insert a l2)). {
+    apply insert_preserves_sorted. assumption.
+    }
+    assert (insert_merge (a :: l1) l2 = insert_merge l1 (insert a l2)). {
+      unfold insert. simpl; auto.
+    }
+    rewrite H3.
+    apply H1 in H2. assumption.
+Qed.
