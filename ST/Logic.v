@@ -401,6 +401,47 @@ first_new 0 (List.fold_left (fun l' => fun (phi : Formula) => insert_merge l' (l
 Definition fresh_evar (Γ : list Formula) (p : Formula) : Term :=
 EConst (fresh_evar_counter Γ p).
 
+(** The alternate approach is that fresh existential variables will be [0],
+and when we introduce one, we [shift_evars] in the related formulas. *)
+Class ShiftEvars A := {
+  shift_evars : A -> A
+}.
+
+Fixpoint shift_evars_term (t : Term) : Term :=
+match t with
+| Var _ => t
+| EConst n => EConst (S n)
+| Fun f args => Fun f (Vector.map shift_evars_term args)
+end.
+
+Global Instance ShiftEvarsTerm : ShiftEvars Term := {
+shift_evars := shift_evars_term
+}.
+
+Global Instance ShiftEvarsPredicate : ShiftEvars Predicate := {
+shift_evars p := match p with
+| P n s args => P n s (Vector.map shift_evars args)
+end
+}.
+
+Fixpoint shift_evars_formula (phi : Formula) : Formula :=
+match phi with
+| Falsum => phi
+| Atom pred => Atom (shift_evars pred)
+| And fm1 fm2 => And (shift_evars_formula fm1) (shift_evars_formula fm2)
+| Or fm1 fm2 => Or (shift_evars_formula fm1) (shift_evars_formula fm2)
+| Implies fm1 fm2 => Implies (shift_evars_formula fm1) (shift_evars_formula fm2)
+| Forall fm => Forall (shift_evars_formula fm)
+end.
+
+Global Instance ShiftEvarsFormula : ShiftEvars Formula := {
+  shift_evars := shift_evars_formula
+}.
+
+Global Instance ShiftEvarsListFormula : ShiftEvars (list Formula) := {
+  shift_evars Γ := List.map shift_evars Γ
+}.
+
 Import ListNotations.
 Reserved Notation "Γ ⊢ P" (no associativity, at level 61).
 
@@ -612,17 +653,9 @@ Theorem fresh_cons_1 : forall (Γ1 Γ2 : list Formula) (P : Formula) (c : name),
   Γ1 ⊆ Γ2 -> fresh c Γ1 -> fresh c Γ2.
 Admitted.
 
-Theorem fresh_cons_2 : forall (Γ1 Γ2 : list Formula) (P Q : Formula) (c : name),
-  Γ1 ⊆ Γ2 -> fresh c (P :: Q :: Γ1) -> fresh c (P :: Q :: Γ2).
+Theorem shift_subcontext : forall (Γ1 Γ2 : list Formula),
+  Γ1 ⊆ Γ2 -> shift_evars Γ1 ⊆ shift_evars Γ2.
 Admitted.
-(*
-Proof.
-  intros. unfold fresh in H0; unfold FreshContext in H0; unfold fresh_list in H0.
-  unfold fresh; unfold FreshContext; unfold fresh_list. intuition.
-  apply H.
-   set (G1 := Q :: Γ1). set (G2 := Q :: Γ2).
-Admitted.
-*)
 
 Global Instance ND_context_extension :
   Proper (subcontext ++> eq ==> Basics.impl) deducible.
