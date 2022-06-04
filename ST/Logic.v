@@ -37,8 +37,8 @@ Global Instance substPred : Subst Predicate :=
   end
 }.
 
-Example pred_subst_1 : subst (BVar 0) (Fun 0 "c" []) (P 3 "P" [Var (BVar 1); Var (BVar 0); Fun 2 "f" [Var (BVar 0); Var (FVar "y")]])
-= (P 3 "P" [Var (BVar 1); (Fun 0 "c" []); Fun 2 "f" [(Fun 0 "c" []); Var (FVar "y")]]).
+Example pred_subst_1 : subst (BVar 0) (Fun "c" []) (P 3 "P" [Var (BVar 1); Var (BVar 0); Fun "f" [Var (BVar 0); Var (FVar "y")]])
+= (P 3 "P" [Var (BVar 1); (Fun "c" []); Fun "f" [(Fun "c" []); Var (FVar "y")]]).
 Proof.
   trivial.
 Qed.
@@ -156,8 +156,8 @@ match phi with
 | _ => phi
 end.
 
-Example subst_bvar_1 : quantifier_elim_subst 0 (Fun 0 "t" []) (Forall (Exists (Atom (P 2 "P" [Var (BVar 0); Var (BVar 1)]))))
-= Exists (Atom (P 2 "P" [Var (BVar 0); Fun 0 "t" []])).
+Example subst_bvar_1 : quantifier_elim_subst 0 (Fun "t" []) (Forall (Exists (Atom (P 2 "P" [Var (BVar 0); Var (BVar 1)]))))
+= Exists (Atom (P 2 "P" [Var (BVar 0); Fun "t" []])).
 Proof.
   trivial.
 Qed.
@@ -248,12 +248,12 @@ match t with
 | Var (FVar x) => x = c
 | Var (BVar _) => True
 | EConst _ => True
-| Fun n f args => let fix fresh_args {k} (ars : Vector.t Term k) :=
-                  match ars with
-                  | tm::ars1 => (fresh_term c tm) /\ fresh_args ars1
-                  | [] => True
-                  end
-                  in fresh_args args
+| Fun f args => let fix fresh_args {k} (ars : Vector.t Term k) :=
+                match ars with
+                | tm::ars1 => (fresh_term c tm) /\ fresh_args ars1
+                | [] => True
+                end
+                in fresh_args args
 end.
 
 Global Instance FreshTerm : Fresh Term := {
@@ -295,16 +295,22 @@ Import ListNotations.
 Reserved Notation "Γ ⊢ P" (no associativity, at level 61).
 
 Inductive deducible : list Formula -> Formula -> Prop :=
+| ND_True_intro {Γ} :
+  Γ ⊢ Verum
 | ND_exfalso_quodlibet {Γ p} :
   Γ ⊢ Falsum ->
   Γ ⊢ p
-| ND_True_intro {Γ} :
-  Γ ⊢ Verum
 | ND_assume {Γ p} :
   List.In p Γ -> 
   Γ ⊢ p
+| ND_not_i {Γ p} :
+  p::Γ ⊢ Falsum ->
+  Γ ⊢ Not p
+| ND_not_e {Γ p q} :
+  In p Γ -> In (Not p) Γ -> Γ ⊢ q
 | ND_imp_e {Γ p q} :
-  Γ ⊢ Implies p q -> Γ ⊢ p ->
+  Γ ⊢ Implies p q -> 
+  Γ ⊢ p ->
   Γ ⊢ q
   (*
 | ND_imp_i {Γ p q} :
@@ -312,7 +318,8 @@ Inductive deducible : list Formula -> Formula -> Prop :=
   (List.remove Formula_eq_dec p Γ) ⊢ Implies p q
   *)
 | ND_imp_i2 {Γ p q} :
-  p::Γ ⊢ q -> Γ ⊢ Implies p q
+  p::Γ ⊢ q -> 
+  Γ ⊢ Implies p q
 | ND_or_intro_l {Γ p q} :
   Γ ⊢ p ->
   Γ ⊢ Or p q
@@ -337,7 +344,8 @@ Inductive deducible : list Formula -> Formula -> Prop :=
   P :: Γ ⊢ Q ->
   Γ ⊢ Q
 | ND_exists_elim {Γ p q c} :
-  Γ ⊢ (Exists p) -> fresh c (List.cons p (List.cons q Γ)) ->
+  Γ ⊢ (Exists p) -> 
+  fresh c (List.cons p (List.cons q Γ)) ->
   (subst_bvar_inner 0 (constant c) p)::Γ ⊢ q ->
   Γ ⊢ q
 | ND_exists_intro {Γ p c} :
@@ -350,6 +358,9 @@ Inductive deducible : list Formula -> Formula -> Prop :=
   Γ ⊢ (subst_bvar_inner 0 (constant c) p) -> 
   fresh c (List.cons p Γ) ->
   Γ ⊢ Forall p
+| ND_proof_by_contradiction {Γ p} :
+  (Not p) :: Γ ⊢ Falsum ->
+  Γ ⊢ p
 where "Γ ⊢ P" := (deducible Γ P).
 
 Definition proves (fm : Formula) : Prop := deducible List.nil fm.
@@ -492,9 +503,13 @@ Global Instance ND_context_extension :
   Proper (subcontext ++> eq ==> Basics.impl) deducible.
 Proof.
 intros Γ₁ Γ₂ ? P Q [] ?. revert Γ₂ H. induction H0; intros.
-+ apply ND_exfalso_quodlibet. auto.
 + apply ND_True_intro.
++ apply ND_exfalso_quodlibet. auto.
 + apply ND_assume. auto.
++ apply ND_not_i. apply IHdeducible. f_equiv. auto.
++ assert (In p Γ₂). apply H1; assumption.
+  assert (In (Not p) Γ₂). apply H1; assumption.
+  apply (@ND_not_e Γ₂ p q) in H2. assumption. assumption.
 + apply (ND_imp_e (p := p)); auto.
 + apply ND_imp_i2. apply IHdeducible. f_equiv. auto.
 + apply ND_or_intro_l. auto.
@@ -513,6 +528,7 @@ intros Γ₁ Γ₂ ? P Q [] ?. revert Γ₂ H. induction H0; intros.
 + apply (ND_forall_elim (p := p) (t := t)). auto.
 + apply (ND_forall_intro (p := p) (c := c)). auto.
   apply (fresh_cons_1 Γ Γ₂ p). apply H1. apply H.
++ apply ND_proof_by_contradiction. apply IHdeducible. f_equiv. auto.
 Qed.
 
 Theorem weakening : forall (Γ1 Γ2 : list Formula) (P : Formula),
@@ -524,3 +540,145 @@ Proof.
   refine (ND_context_extension _ _ _ _ _ eq_refl H).
   assumption.
 Qed.
+
+Require Import Coq.Logic.ClassicalFacts.
+Require Import Classical_Prop.
+Axiom dne : forall P:Prop, P -> ~~P.
+
+Axiom egads : forall (P Q : Prop), (P -> ~ Q) -> ~(P -> Q).
+
+Theorem ND_and_idempotent : forall (P : Formula),
+  [] ⊢ (And P P) <-> [] ⊢ P.
+Proof. split. (* intros; split. *)
+- intros. apply (@ND_and_elim [] P0 P0 P0). assumption.
+  apply ND_assume. unfold In. left. reflexivity.
+- intros. apply (@ND_and_intro [] P0 P0). assumption. assumption.
+Qed.
+
+Theorem ND_or_idempotent : forall (P : Formula),
+  [] ⊢ (Or P P) <-> [] ⊢ P.
+Proof. split. 
+- intros. apply (@ND_proof_by_cases [] P0 P0 P0). assumption.
+  assert (P0 :: [] ⊢ P0). { apply ND_assume; unfold In; left; reflexivity. }
+  assumption. 
+  assert (P0 :: [] ⊢ P0). { apply ND_assume; unfold In; left; reflexivity. }
+  assumption.
+- intros. apply (@ND_or_intro_r [] P0 P0). assumption.
+Qed.
+
+Theorem ND_implies_refl : forall (P : Formula),
+  proves (Implies P P).
+Proof. intros.
+  set (Γ := [P0]).
+  assert (In P0 Γ). { unfold In. left. reflexivity. }
+  apply ND_assume in H.
+  apply ND_imp_i2 in H. assumption.
+Qed.
+
+Theorem ND_dne : forall (P : Formula),
+  proves P -> proves (Not (Not P)).
+  
+Admitted.
+
+Check @deducible_ind.
+
+Theorem ND_double_negation {Γ p} : 
+  Γ ⊢ Implies (Not (Not p)) p.
+Proof.
+  apply @ND_imp_i2; apply @ND_proof_by_contradiction; set (q := Not p).
+  assert (In q (q :: Not q :: Γ)). { unfold In; left; reflexivity. }
+  assert (In (Not q) (q :: Not q :: Γ)). { unfold In; right; left; reflexivity. }
+  apply @ND_not_e with (Γ := (q :: Not q :: Γ)) (p := q) (q := Falsum).
+  assumption. assumption.
+Qed.
+
+Theorem ND_implies_falsum_is_negation : forall (Γ : list Formula) (p : Formula),
+  Γ ⊢ Implies p Falsum <-> Γ ⊢ Not p.
+Proof.
+  split.
+- intros. apply (@ND_not_i Γ p).
+  assert(Γ ⊆ (p :: Γ)). { apply subcontext_weaken. apply subcontext_reflex. }
+  apply (weakening Γ (p :: Γ)) in H as H1.
+  apply (@ND_imp_e (p :: Γ) p Falsum) in H1 as H2. assumption. apply ND_assume.
+  unfold In; left; reflexivity. apply subcontext_weaken. apply subcontext_reflex.
+- intros. apply (@ND_imp_i2 Γ p Falsum).
+  assert(p :: Γ ⊆ (Not p :: p :: Γ)). { apply subcontext_weaken. apply subcontext_reflex. }
+  assert(Γ ⊆ (p :: Γ)). { apply subcontext_weaken. apply subcontext_reflex. }
+  apply (weakening Γ (p :: Γ)) in H as H2.
+  assert (In p ((Not p) :: p :: Γ)). { unfold In; right; left; reflexivity. }
+  assert (In (Not p) ((Not p) :: p :: Γ)). { unfold In; left; reflexivity. }
+  assert ((Not p) :: p :: Γ ⊢ Falsum). {
+  apply (@ND_not_e (Not p :: p :: Γ) p Falsum) in H3 as H5. assumption. assumption.
+  }
+  apply (@ND_cut (p :: Γ) (Not p) Falsum) in H2 as H6. assumption. assumption. assumption.
+Qed.
+
+Theorem ND_excluded_middle {Γ p} :
+  Γ ⊢ Or p (Not p).
+Proof.
+apply @ND_proof_by_contradiction.
+apply @ND_imp_e with (p := Or p (Not p)).
++ apply ND_implies_falsum_is_negation. 
+apply @ND_assume. prove_In.
++ apply @ND_or_intro_r. apply ND_implies_falsum_is_negation. apply @ND_imp_i2.
+  apply @ND_imp_e with (p := Or p (Not p)).
+  - apply ND_implies_falsum_is_negation. apply @ND_assume. prove_In.
+  - apply @ND_or_intro_l.
+    apply @ND_assume; prove_In.
+Qed.
+
+(* Ugh, this is a nightmare, but I should really prove natural deduction as
+encoded is consistent. *)
+Theorem consistency : not (proves Falsum).
+Proof.
+  unfold not; intro.
+  inversion_clear H.
+  - (* ND_exfalso_quodlibet with (Γ = []) (p = Falsum) *) 
+    Check @ND_exfalso_quodlibet. admit.
+  - (* ND_assume *) contradict H0.
+  - (* ND_not_e *) contradict H1.
+  - (* ND_proof_by_cases *) Check @ND_imp_i2.
+    inversion H0.
+    apply (@ND_imp_i2 [] p Falsum) in H0.
+  2: { (* ND_assume *) contradict H0. }
+  3: { (* ND_proof_by_cases *) inversion H0.
+  4: { (* ND_and_elim *)
+  5: { (* ND_cut *)
+  6: { (* ND_exists_elim *)
+  7: { (* ND_forall_elim *)
+  apply ND_assume in H1.
+
+
+*)
+  induction H. Check deducible_ind.
+  - (* ND_True_intro *) assert (deducible Γ Verum). apply ND_True_intro.
+  admit.
+  - (* ND_exfalso *) contradict IHdeducible.
+  - (* ND_assume *) Check @ND_assume. assert (Γ ⊢ p). { apply ND_assume in H; auto. }
+  induction Γ.
+  -- contradict H.
+  -- apply in_inv in H. destruct H. 2: { apply IHΓ in H as H1. assumption. apply ND_assume. assumption. }
+     assert (In p Γ -> Γ ⊢ p). apply ND_assume.
+     assert (In p Γ -> ( Γ ⊢ p /\ ~  Γ ⊢ p)). { split. apply H1 in H2 as H3. assumption. 
+     apply IHΓ in H1 as H4. contradict H4. assumption.  assumption. }
+     assert (In p (a :: Γ)). { unfold In. left. assumption. }
+     apply in_inv in H3 as H4. destruct H4. 2: { apply H2 in H4 as H5. apply H5. apply ND_assume. assumption. }
+     apply (@ND_assume (a :: Γ) p) in H0.
+     apply H2.
+     apply egads in H2. assumption. simpl; auto.
+  - (* ND_not_e *) contradict IHdeducible.
+  - (* ND_not_i *) admit.
+  - (* ND_imp_e *) contradict IHdeducible1.
+  - (* ND_imp_i *) contradict IHdeducible.
+  - (* ND_or_intro_l *) contradict IHdeducible.
+  - (* ND_or_intro_r *) contradict IHdeducible.
+  - (* ND_proof_by_cases *) contradict IHdeducible1.
+  - (* ND_and_intro *) contradict IHdeducible1.
+  - (* ND_and_elim *) contradict IHdeducible1.
+  - (* ND_cut *) contradict IHdeducible1.
+  - (* ND_exists_elim *) contradict IHdeducible1.
+  - (* ND_exists_intro *) contradict IHdeducible.
+  - (* ND_forall_elim *) contradict IHdeducible.
+  - (* ND_forall_intro *) contradict IHdeducible.
+Qed.
+  
