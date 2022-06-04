@@ -1,8 +1,8 @@
 Require Import List.
 Require Import Nat.
-Require Import Nat.
 Require Import Bool.
 Require Export Coq.Arith.Compare_dec.
+Require Import Coq.Arith.Lt.
 Require Import Coq.Arith.PeanoNat.
 Require Import Lia.
 Import ListNotations.
@@ -13,11 +13,13 @@ Proof.
   intros x y. apply iff_reflect. symmetry.
   apply Nat.eqb_eq.
 Qed.
+
 Lemma ltb_reflect : forall x y, reflect (x < y) (x <? y).
 Proof.
   intros x y. apply iff_reflect. symmetry.
   apply Nat.ltb_lt.
 Qed.
+
 Lemma leb_reflect : forall x y, reflect (x <= y) (x <=? y).
 Proof.
   intros x y. apply iff_reflect. symmetry.
@@ -40,8 +42,6 @@ Proof.
   intros.
   inversion H. reflexivity.
 Qed.
-
-Require Import Coq.Arith.Lt.
 
 (** * Insertion
 
@@ -145,10 +145,20 @@ Proof.
          apply IHl. assumption.
 Qed.
 
-Check iff_reflect : forall (P : Prop) (b : bool),
-    P <-> b = true -> reflect P b.
+Theorem insert_nonempty : forall (n : nat) (l : list nat),
+  [] <> (insert n l).
+Proof. intros. induction l.
+  - unfold insert. apply nil_cons.
+  - assert (n < a \/ n = a \/ n > a). lia. inversion H.
+  + apply (insert_lt n a l) in H0 as H1. rewrite H1. discriminate.
+  + inversion H0.
+  ++ apply (insert_eq n a l) in H1 as H2. rewrite H2. discriminate.
+  ++ apply (insert_gt n a l) in H1 as H2. rewrite H2. discriminate.
+Qed.
 
 
+(** Now we have an inductive way to specify if our set of [nat]
+is sorted or not. *)
 Inductive sorted : list nat -> Prop :=
 | sorted_nil :
     sorted []
@@ -163,23 +173,6 @@ Proof.
   intros. induction l.
   - apply sorted_nil.
   - inversion H. assumption.
-Qed.
-
-(*
-Lemma uh_what : forall (n : nat) (l : list nat),
-  n::l <> [].
-Proof. intros. apply  not_eq_sym. apply nil_cons. Qed.
-*)
-
-Theorem insert_nonempty : forall (n : nat) (l : list nat),
-  [] <> (insert n l).
-Proof. intros. induction l.
-  - unfold insert. apply nil_cons.
-  - assert (n < a \/ n = a \/ n > a). lia. inversion H.
-  + apply (insert_lt n a l) in H0 as H1. rewrite H1. discriminate.
-  + inversion H0.
-  ++ apply (insert_eq n a l) in H1 as H2. rewrite H2. discriminate.
-  ++ apply (insert_gt n a l) in H1 as H2. rewrite H2. discriminate.
 Qed.
 
 Lemma sorted_head : forall (n a : nat) (l : list nat),
@@ -207,13 +200,36 @@ Proof.
     apply (insert_gt n a l) in H2. rewrite H2. unfold hd_error; reflexivity.
 Qed.
 
+(*
 Lemma sorted_tail : forall (n : nat) (l l0 : list nat),
-  sorted l -> n :: l0 = insert n l -> l0 = l.
+  sorted l -> n :: l0 = insert n l -> (~(In n l) -> l0 = l).
 Proof.
-  intros. 
-  induction l. 
+  intros. inversion H.
+  destruct l as [|a tl]. 
+  - (* Case: l = [] *)
   unfold insert in H0; injection H0; auto.
+  - (* Case: l = a::tl *)
+  (* Goal: l0 = a :: tl *)
+  inversion H as [|b|b tl']. (* sorted (a :: tl) can be considerd in two 
+  subcases: tl=[] and sorted_cons : a < b -> sorted (b::tl') -> sorted(a::b::tl').
+  The sorted_nil case isn't possible. *)
+  + (* Subcase: l = a::[] *)
+  rewrite <- H3 in H; rewrite <- H3 in H0; rewrite <- H3 in H1.
   
+  - (* Subcase: l = a::b::tl' *)
+  apply sorted_tl in H as IH. 
+  apply IHtl in IH.
+  inversion H.
+  + (* Subcase: tl = []; goal becomes l0 = [a] *)
+  rewrite <- H4 in H0.
+  
+  inversion H0.
+  assert (sorted []) as IH. apply sorted_nil.
+  apply IHtl in IH.
+  
+  apply IHtl in H1.
+  assert(In n (insert n tl)).
+
   assert (a < n \/ n = a \/ a > n). lia.
   inversion H1.
   - apply (insert_gt n a l) in H2 as H3.
@@ -265,7 +281,9 @@ Proof.
      ** (* insert n l = n :: l *)
        rewrite <- H13 in H8; rewrite <- H13 in H10; rewrite <- H13 in H9.
        inversion H8. unfold insert in H15. rewrite <- H6 in H15. 
-       apply (sorted_cons a x (y :: l0)) in H9. apply H9.
+       Check (sorted_cons a n).
+       apply (sorted_cons a n (y :: l0)) in H9. apply H9.
+        sorted (a :: n :: y :: l0)
        rewrite H6 in H4b. 
         apply (insert_lt n x []) in H7 as H8. rewrite H8 in H.
      unfold insert in H. 
@@ -273,6 +291,7 @@ Proof.
      induction l. apply sorted_1.
      inversion IH. rewrite <- H6 in IH.
 Admitted.
+*)
 
 Lemma sorted_split : forall (l1 l2 : list nat),
   sorted (l1 ++ l2) -> sorted l1 /\ sorted l2.
@@ -286,7 +305,9 @@ Proof. intros. induction l1.
   -- apply H1.
 Qed.
 
-Lemma sorted_head : forall (n k : nat) (l : list nat),
+Check sorted_head.
+
+Lemma sorted_head_min : forall (n k : nat) (l : list nat),
   sorted (n :: l) -> In k l -> n < k.
 Proof.
   intros. induction l.
@@ -301,9 +322,11 @@ Proof.
      assumption.
 Qed.
 
+(*
 Lemma sorted_split_ends : forall (l1 l2 : list nat),
   sorted (l1 ++ l2) ->
   (forall (a b : nat), In a l1 /\ In b l2 -> a < b).
+Admitted.
 Proof. intros. induction l1.
   - apply proj1 in H0. contradict H0.
   - apply proj1 in H0 as H1; apply proj2 in H0 as H2.
@@ -311,7 +334,8 @@ Proof. intros. induction l1.
  -- (* Subcase: l1 = [] *) apply sorted_tl in H as IH. 
     unfold app in IHl1; unfold app in H. assert (a0 = a). { unfold In in H1. intuition. }
     rewrite H3 in H; rewrite H3 in H1; rewrite H3 in H0.
-    apply (sorted_head a b l2) in H. assumption. assumption.
+    Check (sorted_head a b l2).
+    apply (sorted_head b a l2) in H. apply IHl1 in IH. assumption. assumption.
  -- (* Subcase: l1 = n :: l1 *) 
     rewrite <- (app_comm_cons (n :: l1) l2 a0) in H.
     apply sorted_tl in H as IH. 
@@ -330,8 +354,9 @@ Qed.
 Lemma insert_split : forall (n : nat) (l1 l2 : list nat),
   sorted (l1 ++ n::l2) -> (l1 ++ n::l2) = insert n (l1 ++ n::l2).
 Admitted.
+*)
 
-
+(*
 
 Theorem insert_existing_sorted : forall (n : nat) (l : list nat),
   sorted l -> In n l -> l = insert n l.
@@ -342,7 +367,79 @@ Proof.
   apply insert_split in H.
   rewrite <- H1 in H. apply H.
 Qed.
+*)
 
+Lemma sorted_in_inv : forall (n h : nat) (tl : list nat),
+  sorted(h :: tl) -> In n (h::tl) -> h=n \/ (In n tl).
+Proof.
+  intros. apply in_inv in H0. trivial.
+Qed.
+
+Lemma sorted_surgery : forall ( a b : nat) (tl : list nat),
+  sorted (a :: b :: tl) -> sorted (a :: tl).
+Proof.
+  intros. inversion H. apply sorted_tl in H4 as H5.
+  destruct tl.
+  - apply sorted_1.
+  - Check sorted_cons. inversion H4.
+    assert (a < n). { Nat.order. }
+    apply (sorted_cons a n tl) in H11. assumption. assumption.
+Qed.
+
+
+Lemma sorted_in_tl : forall (n h : nat) (tl : list nat),
+  sorted (h :: tl) -> In n tl -> h < n.
+Proof.
+  intros. induction tl.
+  - (* Base case: tl = [] *)
+    contradict H0.
+  - (* Inductive case: tl = a::tl *)
+    inversion H.
+(*
+  -- (* Case: sorted_1 *)
+    contradict H0. rewrite <- H3. apply in_nil.
+*)
+  -- (* Case: sorted_cons where [h < y] and [tl = y::l] *)
+    rewrite <- H2 in H0. apply in_inv in H0 as H6.
+    case H6.
+  + (* Subcase: [n = y] *)
+    intro. rewrite H7 in H2. rewrite <- H2 in H3. assumption.
+  + (* Subcase: [In n l] *)
+    intro. apply sorted_surgery in H as IH. apply IHtl in IH.
+    apply IH. assumption.
+Qed.
+
+Theorem insert_existing_sorted : forall (n : nat) (l : list nat),
+  sorted l -> In n l -> l = insert n l.
+Proof.
+  intros. 
+  induction l as [|h tl].
+  - contradict H0. 
+  - inversion H.
+  + rewrite <- H3 in H0; rewrite <- H3 in H.
+    assert (h = n). { unfold In in H0. intuition. }
+    rewrite H1; rewrite H1 in H0; rewrite H1 in H.
+    assert (n = n). reflexivity.
+    apply (insert_eq n n []) in H4. symmetry. assumption.
+  + (* Subcase sorted_cons : tl=y::l, h < y, sorted(y :: l) *)
+    apply in_inv in H0. case H0. 
+  ++ (* Case of [In h n::tl] when [h = n] *)
+    intro. rewrite H5. rewrite (insert_eq n n (y::l)). reflexivity. reflexivity.
+  ++ (* Case of [In h n::tl] when [In h tl] *)
+    intro. (* apply sorted_tl in H as IH. apply IHtl in IH. *)
+    rewrite <- H2 in H5. apply in_inv in H5. case H5.
+    (* Since [tl = y::l], we do this again! *)
+  +++ intro.  rewrite H6; rewrite H6 in H5; rewrite H6 in H2; rewrite H6 in H3; rewrite H6 in H4.
+    rewrite (insert_gt n h (n :: l)).
+    rewrite (insert_eq n n l). reflexivity. reflexivity. assumption.
+  +++ (* Last case: In n l -> h :: y :: l = insert n (h :: y :: l) *)
+    intro. (* INDUCTION SAVES US, AT LONG LAST! *)
+    apply sorted_tl in H as IH. apply IHtl in IH.
+    rewrite H2. apply (sorted_in_tl n h tl) in H as IH1.
+    apply (insert_gt n h tl) in IH1. rewrite <- IH in IH1. auto.
+    rewrite <- H2. simpl; auto.
+    rewrite <- H2. simpl; auto.
+Qed.
 
 Lemma eq_lists_eq_len {A} : forall (l1 l2 : list A),
   l1 = l2 -> length l1 = length l2.
@@ -351,6 +448,7 @@ Proof.
   rewrite H. reflexivity.
 Qed.
 
+(*
 Theorem insert_nondecreasing : forall (n : nat) (l : list nat),
   sorted l -> length l <= length (insert n l).
 Proof.
@@ -364,6 +462,7 @@ Proof.
   
 Admitted.
 
+*)
 
 
 
@@ -373,23 +472,42 @@ Admitted.
 
 
 
-
-
-
-
+Lemma in_singleton_eq : forall {A} (a x : A),
+  In a [x] -> a = x.
+Proof. intros. unfold In in H. intuition. Qed.
 
 
 Theorem insert_singleton_invert : forall (n x : nat) (l : list nat),
-  [x] = (insert n l) -> l = [].
+  [x] = (insert n l) -> l = [] \/ l = [n].
 Proof.
-  intros. assert (sorted [x]). apply sorted_1.
-  assert (sorted (insert n l)). rewrite <- H. assumption.
-  apply sorted_insert_sorted_tl in H1 as H2.
-  inversion H1. auto.
-  destruct l. 
-  - reflexivity.
-  - assert ([] <> n0 :: l). apply nil_cons.
-Admitted.
+  intros. 
+  assert (sorted [x]). apply sorted_1.
+  rewrite H in H0. 
+  assert (In n [x]). { rewrite H. apply (insert_inv n l). }
+  apply  (in_singleton_eq n x) in H1. rewrite <- H1 in H.
+  clear H1.
+  induction l as [|n0 l0].
+  - (* Case: l = [] *) left; reflexivity.
+  - (* Case: l = n0::l0 *) 
+    assert (n < n0 \/ n = n0 \/ n > n0). lia. 
+  -- destruct H1.
+  + (* Subcase: n < n0 *)
+    apply (insert_lt n n0 l0) in H1. rewrite H1 in H; rewrite H1 in H0.
+    inversion H0; right; discriminate.
+  + destruct H1.
+  ++ (* Subcase: n = n0 *)
+    apply (insert_eq n n0 l0) in H1. rewrite H1 in H; rewrite H1 in H0.
+    right; symmetry. apply H.
+  ++ (* Subcase: n > n0 *)
+    apply  (insert_gt n n0 l0) in H1 as H2. rewrite H2 in H; rewrite H2 in H0.
+    inversion H0.
+  +++ (* Sub-subcase (sorted_1) : l0 = [] *)
+    right. rewrite <- H5 in H.
+    contradict H5. apply (insert_nonempty n l0).
+  +++ (* Sub-subcase (sorted_cons) [sorted (insert n (n0 :: l0))] becomes : 
+         n0 < y -> sorted( y :: l) -> sorted(n0 :: y :: l)*)
+      rewrite <- H4 in H; rewrite <- H4 in H2. left. discriminate.
+Qed.
 
 Require Import Coq.Classes.RelationClasses.
 
@@ -401,36 +519,69 @@ Qed.
 
 Lemma gt_to_not_ltb : forall (n a : nat),
   n > a -> Nat.ltb n a = false.
-Admitted.
+Proof. intros.
+  bdestruct (n <? a); simpl.
+  contradict H0. lia. reflexivity.
+Qed.
 
 Lemma gt_to_not_eqb : forall (n a : nat),
   n > a -> Nat.eqb n a = false.
-Admitted.
-
-Lemma sorted_omit : forall (a b : nat) (l : list nat),
-  sorted (a :: b :: l) -> sorted (a :: l).
-Proof.
-  intros.
-  induction l.
-  - apply sorted_1.
-  - apply sorted_tl in H as H1. apply sorted_tl in H1.
-    inversion H. clear H0 H2 H4.
-    inversion H5. clear H0 H2 H6.
-    assert (a < a0). lia.
-    apply sorted_cons. assumption. assumption.
+Proof. intros.
+  bdestruct (n =? a); simpl.
+  contradict H0. lia. reflexivity.
 Qed.
+
 
 Lemma invert_insert_sorted : forall (n a n0 : nat) (l l0 : list nat),
   sorted (a :: l) -> insert n (a :: l) = a :: n0 :: l0 ->
   a < n0.
-(*
 Proof.
-  intros. induction l.
-  2: { inversion H. apply sorted_tl in H5.
-   apply (sorted_1 a) in H. unfold insert in H0.
-  inversion H0.
-*)
-Admitted.
+  intros.
+  assert (a > n \/ a = n \/ a < n). lia.
+  generalize dependent l0.
+  induction l.
+  - intros. destruct H1.
+  -- (* Subcase: a > n *)
+    apply (insert_lt n a []) in H1 as H2. rewrite H2 in H0.
+    contradict H0. injection. intros. lia.
+  -- destruct H1.
+  --- (* Subcase: a = n *) apply eq_sym in H1.
+    apply (insert_eq n a []) in H1 as H2. rewrite H2 in H0.
+    contradict H0. injection. discriminate.
+  --- (* Subcase: a < n *)
+    apply (insert_gt n a []) in H1 as H2. rewrite H2 in H0.
+    unfold insert in H0. injection H0. intros. rewrite H4 in H1. assumption.
+ - (* Inductive case: l = a0::l *)
+  destruct H1.
+  -- intros. apply Nat.ltb_lt in H0 as H2. unfold insert in H1.
+    rewrite H2 in H1. contradict H1. injection.
+    intros. rewrite <- H3 in H1. injection H1. intro. lia.
+  -- destruct H0.
+  + (* Subcase: a = n *) intros. apply eq_sym in H0.
+    apply (insert_eq n a (a0::l)) in H0 as H3.
+    rewrite H3 in H1. injection H1. intros.
+    rewrite H4 in H. inversion H. assumption.
+  + (* Subase: a < n *) intros.
+    apply (sorted_surgery a a0 l) in H as IH.
+    apply (insert_gt n a (a0 :: l)) in H0 as H2.
+    assert (a0 < n \/ a0 = n \/ a0 > n). lia.
+    destruct H3.
+  ++ (* a0 < n *)
+    apply (insert_gt n a0 l) in H3 as H4.
+    apply (insert_gt n a (a0 :: l)) in H0 as H5.
+    rewrite H4 in H2. rewrite H2 in H1. injection H1.
+    intros. rewrite H7 in H. inversion H. assumption.
+  ++ destruct H3.
+  * (* Case a0 = n *) apply eq_sym in H3.
+    apply (insert_eq n a0 l) in H3 as H4.
+    rewrite H4 in H2. rewrite H2 in H1. injection H1. intros.
+    inversion H. rewrite H6 in H9. assumption.
+  * (* Case a0 > n *)
+    apply (insert_lt n a0 l) in H3 as H4. 
+    assert (insert n (a :: a0 :: l) = a :: insert n (a0 :: l)). assumption.
+    rewrite H4 in H2.
+    rewrite H4 in H5. rewrite H1 in H5. injection H5. intros. rewrite H7. assumption.
+Qed. 
 
 Theorem insert_preserves_sorted : forall (n : nat) (l : list nat),
   sorted l -> sorted (insert n l).
