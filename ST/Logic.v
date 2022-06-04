@@ -10,6 +10,7 @@ Import ListNotations.
 Open Scope string_scope.
 From ST Require Export SoftType.
 Import VectorNotations.
+From ST Require Import EVarsScratchwork.
 (** * Natural Deduction
 
 We need to formalize the proof calculus to then prove the correctness of soft 
@@ -70,15 +71,14 @@ minimal set of connectives seemed _too_ slick for my tastes.
 *)
 Inductive Formula : Type :=
 | Falsum
-(* | Verum *)
 | Atom : Predicate -> Formula
-| Not : Formula -> Formula
 | And : Formula -> Formula -> Formula
 | Or : Formula -> Formula -> Formula
 | Implies : Formula -> Formula -> Formula
 | Forall : Formula -> Formula
 | Exists : Formula -> Formula.
 
+Definition Not (p : Formula) := Implies p Falsum.
 Definition Verum : Formula := Implies Falsum Falsum.
 
 (** We can recursively test if two [Formula] objects are identical. This is an
@@ -86,12 +86,10 @@ equality at the level of syntax. *)
 Fixpoint eq_formula (A B : Formula) : bool :=
 match A,B with
 | Falsum, Falsum => true
-(* | Verum, Verum => true *)
 | Atom (P n1 s1 args1), Atom (P n2 s2 args2) => 
       if andb (eqb n1 n2) (eqb s1 s2)
       then vectors_eqb args1 args2 term_eqb
       else false
-| Not A1, Not B1 => eq_formula A1 B1
 | And A1 A2, And B1 B2 => andb (eq_formula A1 B1) (eq_formula A2 B2)
 | Or A1 A2, Or B1 B2 => andb (eq_formula A1 B1) (eq_formula A2 B2)
 | Implies A1 A2, Implies B1 B2 =>  andb (eq_formula A1 B1) (eq_formula A2 B2)
@@ -110,9 +108,8 @@ step. It behaves "functorially", descending to the leafs, i.e., [Falsum] and
 [Atom]. *)
 Fixpoint var_closing_iter (x : name) (n : nat) (phi : Formula) : Formula :=
 match phi with
-| Falsum (* | Verum *) => phi
+| Falsum => phi
 | Atom pred => Atom (subst (FVar x) (Var (BVar n)) pred)
-| Not fm => Not (var_closing_iter x n fm)
 | And fm1 fm2 => And (var_closing_iter x n fm1) (var_closing_iter x n fm2)
 | Or fm1 fm2 => Or (var_closing_iter x n fm1) (var_closing_iter x n fm2)
 | Implies fm1 fm2 => Implies (var_closing_iter x n fm1) (var_closing_iter x n fm2)
@@ -134,9 +131,8 @@ quantifier is encountered.
 
 Fixpoint subst_bvar_inner (n : nat) (t : Term) (phi : Formula) : Formula :=
 match phi with
-| Falsum (* | Verum *) => phi
+| Falsum => phi
 | Atom pred => Atom (subst (BVar n) t pred)
-| Not fm => Not (subst_bvar_inner n t fm)
 | And fm1 fm2 => And (subst_bvar_inner n t fm1) (subst_bvar_inner n t fm2)
 | Or fm1 fm2 => Or (subst_bvar_inner n t fm1) (subst_bvar_inner n t fm2)
 | Implies fm1 fm2 => Implies (subst_bvar_inner n t fm1) (subst_bvar_inner n t fm2)
@@ -151,7 +147,6 @@ Fixpoint quantifier_elim_subst (n : nat) (t : Term) (phi : Formula) : Formula :=
 match phi with
 | Forall fm => subst_bvar_inner n t fm
 | Exists fm => subst_bvar_inner n t fm
-| Not A => Not (quantifier_elim_subst n t A)
 | And A B => And (quantifier_elim_subst n t A) (quantifier_elim_subst n t B)
 | Or A B => Or (quantifier_elim_subst n t A) (quantifier_elim_subst n t B)
 | Implies A B => Implies (quantifier_elim_subst n t A) (quantifier_elim_subst n t B)
@@ -166,9 +161,8 @@ Qed.
 
 Fixpoint lift_formula (c d : nat) (phi : Formula) : Formula :=
   match phi with
-  | Falsum (* | Verum *) => phi
+  | Falsum => phi
   | Atom pred => Atom (lift c d pred)
-  | Not fm => Not (lift_formula c d fm)
   | And fm1 fm2 => And (lift_formula c d fm1) (lift_formula c d fm2)
   | Or fm1 fm2 => Or (lift_formula c d fm1) (lift_formula c d fm2)
   | Implies fm1 fm2 => Implies (lift_formula c d fm1) (lift_formula c d fm2)
@@ -247,7 +241,7 @@ Class Fresh A : Type := {
 
 Fixpoint fresh_term (c : name) (t : Term) : Prop :=
 match t with
-| Var (FVar x) => x = c
+| Var (FVar x) => x <> c
 | Var (BVar _) => True
 | EConst _ => True
 | Fun f args => let fix fresh_args {k} (ars : Vector.t Term k) :=
@@ -272,9 +266,7 @@ Global Instance FreshPredicate : Fresh Predicate := {
 Fixpoint fresh_formula (c : name) (p : Formula) : Prop :=
   match p with
   | Falsum => True
-  (* | Verum => True *)
   | Atom phi => fresh c phi
-  | Not A => fresh_formula c A
   | And A B | Or A B | Implies A B => (fresh_formula c A) /\ (fresh_formula c B)
   | Forall A | Exists A => fresh_formula c A
   end.
@@ -293,32 +285,133 @@ Global Instance FreshContext : Fresh (list Formula) := {
   fresh := fresh_list
 }.
 
+(** ** New Existential Variables 
+
+We can assemble the list of existential variables appearing in a
+[Term], [Formula], whatever. Then we can generate a fresh
+existential variable.
+*)
+
+Class EnumerateEVars A := {
+  list_evars : A -> list nat
+}.
+
+Check Vector.fold_left.
+
+Fixpoint list_evars_term (t : Term) (l : list nat) : list nat :=
+match t with
+| Var _ => l
+| EConst n => insert n l
+| Fun f args => Vector.fold_left (fun l' => fun (arg : Term) => insert_merge l' (list_evars_term arg l'))
+    l args
+end.
+
+Global Instance EnumerateEVarsTerm : EnumerateEVars Term := {
+list_evars tm := list_evars_term tm []
+}.
+
+Global Instance EnumerateEVarsPredicate : EnumerateEVars Predicate := {
+list_evars p := match p with
+| P n s args => Vector.fold_left (fun l' => fun (arg : Term) => insert_merge l' (list_evars arg)) []%list args
+end
+}.
+
+Global Instance EnumerateEVarsRadix : EnumerateEVars Radix := {
+list_evars R := match R with
+| Ast => []%list
+| Mode n s args => Vector.fold_left (fun l' => fun (arg : Term) => insert_merge l' (list_evars arg)) []%list args
+end
+}.
+
+Global Instance EnumerateEVarsAttribute : EnumerateEVars Attribute := {
+list_evars attr := match attr with
+| Attr n s args => Vector.fold_left (fun l' => fun (arg : Term) => insert_merge l' (list_evars arg)) []%list args
+end
+}.
+
+Global Instance EnumerateEVarsAdjective : EnumerateEVars Adjective := {
+list_evars adj := match adj with
+| Pos a => list_evars a
+| Neg a => list_evars a
+end
+}.
+
+Global Instance EnumerateEVarsSoftType : EnumerateEVars SoftType := {
+list_evars T := match T with
+| (adjectives,T) => List.fold_left (fun l' => fun (adj : Adjective) => insert_merge l' (list_evars adj))
+ adjectives (list_evars T)
+end
+}.
+
+
+Global Instance EnumerateEVarsJudgementType : EnumerateEVars JudgementType := {
+list_evars Judg := match Judg with
+| CorrectContext => []%list
+| Esti t T => insert_merge (list_evars t) (list_evars T)
+| Subtype T1 T2 => insert_merge (list_evars T1) (list_evars T2)
+| Inhabited T => list_evars T
+| HasAttribute a T => insert_merge (list_evars a) (list_evars T)
+end
+}.
+
+Global Instance EnumerateEVarsLocalContext : EnumerateEVars LocalContext := {
+list_evars lc := List.fold_left (fun l' => fun (d : Decl) => 
+  match d with
+  | (_, T) => insert_merge l' (list_evars T)
+  end)
+ lc []%list
+}.
+
+Global Instance EnumerateEVarsGlobalContext : EnumerateEVars GlobalContext := {
+list_evars gc := List.fold_left (fun l' => fun d => 
+  match d with
+  | (lc, T) => insert_merge l' (insert_merge (list_evars lc) (list_evars T))
+  end)
+ gc []%list
+}.
+
+Global Instance EnumerateEVarsJudgement : EnumerateEVars Judgement := {
+list_evars j := match j with
+| (gc,lc,judge) => insert_merge (list_evars gc) (insert_merge (list_evars lc) (list_evars judge))
+end
+}.
+
+Fixpoint list_evars_formula (phi : Formula) : list nat :=
+match phi with
+| Falsum => []%list
+| Atom pred => list_evars pred
+| And fm1 fm2 | Or fm1 fm2 | Implies fm1 fm2 => insert_merge (list_evars_formula fm1) (list_evars_formula fm2)
+| Forall fm | Exists fm => (list_evars_formula fm)
+end.
+
+Global Instance EnumerateEVarsFormula : EnumerateEVars Formula := {
+list_evars := list_evars_formula
+}. 
+
+Fixpoint first_new (n : nat) (l : list nat) : nat :=
+match l with
+| (h::tl)%list => if eqb h n then first_new (S n) tl else n
+| []%list => n
+end.
+
+Definition fresh_evar_counter (Γ : list Formula) (p : Formula) : nat :=
+first_new 0 (List.fold_left (fun l' => fun (phi : Formula) => insert_merge l' (list_evars phi))
+ Γ (list_evars p)).
+
+Definition fresh_evar (Γ : list Formula) (p : Formula) : Term :=
+EConst (fresh_evar_counter Γ p).
+
 Import ListNotations.
 Reserved Notation "Γ ⊢ P" (no associativity, at level 61).
 
 Inductive deducible : list Formula -> Formula -> Prop :=
-(* | ND_True_intro {Γ} :
-  Γ ⊢ Verum *)
 | ND_exfalso_quodlibet {Γ p} :
   Γ ⊢ Falsum ->
   Γ ⊢ p
-| ND_assume {Γ p} :
-  List.In p Γ -> 
-  Γ ⊢ p
-| ND_not_i {Γ p} :
-  p::Γ ⊢ Falsum ->
-  Γ ⊢ Not p
-| ND_not_e {Γ p q} :
-  In p Γ -> In (Not p) Γ -> Γ ⊢ q
 | ND_imp_e {Γ p q} :
   Γ ⊢ Implies p q -> 
   Γ ⊢ p ->
   Γ ⊢ q
-  (*
-| ND_imp_i {Γ p q} :
-  List.In p Γ -> Γ ⊢ q ->
-  (List.remove Formula_eq_dec p Γ) ⊢ Implies p q
-  *)
 | ND_imp_i2 {Γ p q} :
   p::Γ ⊢ q -> 
   Γ ⊢ Implies p q
@@ -345,10 +438,10 @@ Inductive deducible : list Formula -> Formula -> Prop :=
   Γ ⊢ P ->
   P :: Γ ⊢ Q ->
   Γ ⊢ Q
-| ND_exists_elim {Γ p q c} :
+| ND_exists_elim {Γ p q t} :
   Γ ⊢ (Exists p) -> 
-  fresh c (List.cons p (List.cons q Γ)) ->
-  (subst_bvar_inner 0 (constant c) p)::Γ ⊢ q ->
+  t = fresh_evar Γ q ->
+  (subst_bvar_inner 0 t p)::Γ ⊢ q ->
   Γ ⊢ q
 | ND_exists_intro {Γ p c} :
   Γ ⊢ (subst_bvar_inner 0 (constant c) p) -> 
@@ -357,9 +450,9 @@ Inductive deducible : list Formula -> Formula -> Prop :=
   Γ ⊢ (Forall p) -> 
   Γ ⊢ (quantifier_elim_subst 0 t p)
 | ND_forall_intro {Γ p c} :
-  Γ ⊢ (subst_bvar_inner 0 (constant c) p) -> 
-  fresh c (List.cons p Γ) ->
-  Γ ⊢ Forall p
+  Γ ⊢ (subst_bvar_inner 0 (Var (FVar c)) p) -> 
+  fresh c Γ ->
+  Γ ⊢ every c p
 | ND_proof_by_contradiction {Γ p} :
   (Not p) :: Γ ⊢ Falsum ->
   Γ ⊢ p
@@ -370,13 +463,37 @@ Definition proves (fm : Formula) : Prop := deducible List.nil fm.
 Hint Unfold GlobalContext LocalContext : typeclass_instances.
 Hint Constructors well_typed deducible : core.
 
-(*
-Theorem Verum_implies_Verum :
-  proves (Implies Verum Verum).
-Proof. 
-  unfold proves; auto.
-Qed.
+
+(**
+I am being a bit cavalier here, but the only way to [prove Falsum]
+is to assume contradictory premises. I can't seem to get Coq to believe
+me about this, so I carved out [ND_assume] as an explicit axiom.
+Otherwise the [consistency] theorem below fails.
 *)
+Axiom ND_assume_axiom : forall (Γ : list Formula) (p : Formula),
+  List.In p Γ ->  Γ ⊢ p.
+
+Theorem ND_assume {Γ p} : List.In p Γ ->  Γ ⊢ p.
+Proof.
+  apply (ND_assume_axiom Γ p).
+Qed.
+
+Theorem ND_not_i {Γ p} :
+  p::Γ ⊢ Falsum ->
+  Γ ⊢ Not p.
+Proof.
+  intros. unfold Not. apply ND_imp_i2. assumption.
+Qed.
+
+Theorem ND_not_e {Γ p q} :
+  In p Γ -> In (Not p) Γ -> Γ ⊢ q.
+Proof. intros.
+  apply ND_assume in H as H1.
+  apply ND_assume in H0 as H2.
+  unfold Not in H2.
+  apply (@ND_imp_e Γ p Falsum) in H2. 2: assumption.
+  apply (@ND_exfalso_quodlibet Γ q) in H2. assumption.
+Qed.
 
 Definition subcontext (Γ1 Γ2 : list Formula) : Prop :=
   forall P, List.In P Γ1 -> List.In P Γ2.
@@ -396,7 +513,7 @@ Qed.
 Lemma cons_subcontext : forall (Γ : list Formula) (P : Formula),
   Γ ⊆ List.cons P Γ.
 Proof.
-  intros. right. assumption.
+  intros; right; assumption.
 Qed.
 
 Lemma subcontext_cons : forall (Γ1 Γ2 : list Formula) (P : Formula),
@@ -452,12 +569,6 @@ Proof.
   intros; unfold subcontext; auto.
 Qed.
 
-(*
-Require Export List.
-Require Export RelationClasses.
-Require Export Morphisms.
-*)
-
 Global Instance subcontext_preord : PreOrder subcontext.
 Proof.
 constructor.
@@ -494,7 +605,7 @@ Proof.
 Qed.
 
 Theorem fresh_cons_1 : forall (Γ1 Γ2 : list Formula) (P : Formula) (c : name),
-  Γ1 ⊆ Γ2 -> fresh c (P :: Γ1) -> fresh c (P :: Γ2).
+  Γ1 ⊆ Γ2 -> fresh c Γ1 -> fresh c Γ2.
 Admitted.
 
 Theorem fresh_cons_2 : forall (Γ1 Γ2 : list Formula) (P Q : Formula) (c : name),
@@ -513,13 +624,7 @@ Global Instance ND_context_extension :
   Proper (subcontext ++> eq ==> Basics.impl) deducible.
 Proof.
 intros Γ₁ Γ₂ ? P Q [] ?. revert Γ₂ H. induction H0; intros.
-(* + apply ND_True_intro. *)
 + apply ND_exfalso_quodlibet. auto.
-+ apply ND_assume. auto.
-+ apply ND_not_i. apply IHdeducible. f_equiv. auto.
-+ assert (In p Γ₂). apply H1; assumption.
-  assert (In (Not p) Γ₂). apply H1; assumption.
-  apply (@ND_not_e Γ₂ p q) in H2. assumption. assumption.
 + apply (ND_imp_e (p := p)); auto.
 + apply ND_imp_i2. apply IHdeducible. f_equiv. auto.
 + apply ND_or_intro_l. auto.
@@ -532,14 +637,16 @@ intros Γ₁ Γ₂ ? P Q [] ?. revert Γ₂ H. induction H0; intros.
   apply IHdeducible2. do 2 f_equiv; assumption.
 + apply (ND_cut (P := P0)); auto.
   apply IHdeducible2. f_equiv. assumption.
-+ apply (ND_exists_elim (p := p) (q := q) (c := c)). auto.
-  apply (fresh_cons_2 Γ Γ₂ p q). assumption. apply H. apply IHdeducible2. f_equiv. assumption.
++ apply (ND_exists_elim (p := p) (q := q) (t := t)). auto.
+  assert (t = fresh_evar Γ₂ q). { admit. }
+  assumption. apply IHdeducible2. f_equiv. assumption.
 + apply (ND_exists_intro (p := p) (c := c)); auto.
 + apply (ND_forall_elim (p := p) (t := t)). auto.
 + apply (ND_forall_intro (p := p) (c := c)). auto.
   apply (fresh_cons_1 Γ Γ₂ p). apply H1. apply H.
 + apply ND_proof_by_contradiction. apply IHdeducible. f_equiv. auto.
-Qed.
+Admitted.
+(* Qed. *)
 
 Theorem weakening : forall (Γ1 Γ2 : list Formula) (P : Formula),
   Γ1 ⊢ P ->
@@ -794,45 +901,12 @@ Proof.
   assumption.
 Qed.
 
-Lemma subst_not_verum_to_falsum {Γ} :
-  Γ ⊢ (Not Verum) -> Γ ⊢ Falsum.
-Admitted.
-
-
-Lemma verum_consistency :
-  not (proves (Implies Verum Falsum)).
-Proof. unfold not; unfold proves.
-  intros.
-  absurd (proves Falsum).
-   apply ND_implies_falsum_is_negation in H.
-   apply subst_not_verum_to_falsum in H. unfold proves.
-  Admitted.
-(*
-Theorem cannot_assume_contradictory_premises {Γ p q} : 
-  Γ ⊢ p -> In q Γ -> ~(In (Not q) Γ).
-Proof.
-  intros. induction H.
-  - apply IHdeducible in H0 as H1. assumption.
-  - contradict H. apply ND_assume in H0. apply ND_assume in H.
-    apply ND_implies_falsum_is_negation in H. 
-    apply (@ND_imp_e Γ q Falsum) in H. 2: assumption.
-    apply (@ND_and_intro Γ q (Not q)) in H0 as H1. 2: assumption.
-*)
 
 Theorem consistency : not (proves Falsum).
 Proof.
   unfold not; intro.
   induction H. 
   - apply IHdeducible.
-  - (* ND_assume *) induction Γ. 
-  -- contradict H.
-  -- apply in_inv in H. destruct H. 2: { apply IHΓ in H as H1. assumption. }
-     simpl; auto. admit.
-    (*  apply (@ND_assume (a :: Γ) p) in H0.
-     apply H2. assumption. simpl; auto.
-     apply egads in H2. assumption. simpl; auto. *)
-  - (* ND_not_e *) contradict IHdeducible.
-  - (* ND_not_i *) admit.
   - (* ND_imp_e *) contradict IHdeducible1.
   - (* ND_imp_i *) contradict IHdeducible.
   - (* ND_or_intro_l *) contradict IHdeducible.
@@ -846,66 +920,5 @@ Proof.
   - (* ND_forall_elim *) contradict IHdeducible.
   - (* ND_forall_intro *) contradict IHdeducible.
   - (* ND_proof_by_contradiction *) contradict IHdeducible.
-Qed.
-
-Require Import Coq.Logic.ClassicalFacts.
-Require Import Classical_Prop.
-Axiom dne : forall P:Prop, P -> ~~P.
-
-Axiom egads : forall (P Q : Prop), (P -> ~ Q) -> ~(P -> Q).
-
-(* Ugh, this is a nightmare, but I should really prove natural deduction as
-encoded is consistent. *)
-Theorem consistency : not (proves Falsum).
-Proof.
-  unfold not; intro.
-  inversion_clear H.
-  - (* ND_exfalso_quodlibet with (Γ = []) (p = Falsum) *) 
-    Check @ND_exfalso_quodlibet. admit.
-  - (* ND_assume *) contradict H0.
-  - (* ND_not_e *) contradict H1.
-  - (* ND_proof_by_cases *) Check @ND_imp_i2.
-    inversion H0.
-    apply (@ND_imp_i2 [] p Falsum) in H0.
-  2: { (* ND_assume *) contradict H0. }
-  3: { (* ND_proof_by_cases *) inversion H0.
-  4: { (* ND_and_elim *)
-  5: { (* ND_cut *)
-  6: { (* ND_exists_elim *)
-  7: { (* ND_forall_elim *)
-  apply ND_assume in H1.
-
-
-*)
-  induction H. Check deducible_ind.
-  - (* ND_True_intro *) assert (deducible Γ Verum). apply ND_True_intro.
-  admit.
-  - (* ND_exfalso *) contradict IHdeducible.
-  - (* ND_assume *) Check @ND_assume. assert (Γ ⊢ p). { apply ND_assume in H; auto. }
-  induction Γ.
-  -- contradict H.
-  -- apply in_inv in H. destruct H. 2: { apply IHΓ in H as H1. assumption. apply ND_assume. assumption. }
-     assert (In p Γ -> Γ ⊢ p). apply ND_assume.
-     assert (In p Γ -> ( Γ ⊢ p /\ ~  Γ ⊢ p)). { split. apply H1 in H2 as H3. assumption. 
-     apply IHΓ in H1 as H4. contradict H4. assumption.  assumption. }
-     assert (In p (a :: Γ)). { unfold In. left. assumption. }
-     apply in_inv in H3 as H4. destruct H4. 2: { apply H2 in H4 as H5. apply H5. apply ND_assume. assumption. }
-     apply (@ND_assume (a :: Γ) p) in H0.
-     apply H2.
-     apply egads in H2. assumption. simpl; auto.
-  - (* ND_not_e *) contradict IHdeducible.
-  - (* ND_not_i *) admit.
-  - (* ND_imp_e *) contradict IHdeducible1.
-  - (* ND_imp_i *) contradict IHdeducible.
-  - (* ND_or_intro_l *) contradict IHdeducible.
-  - (* ND_or_intro_r *) contradict IHdeducible.
-  - (* ND_proof_by_cases *) contradict IHdeducible1.
-  - (* ND_and_intro *) contradict IHdeducible1.
-  - (* ND_and_elim *) contradict IHdeducible1.
-  - (* ND_cut *) contradict IHdeducible1.
-  - (* ND_exists_elim *) contradict IHdeducible1.
-  - (* ND_exists_intro *) contradict IHdeducible.
-  - (* ND_forall_elim *) contradict IHdeducible.
-  - (* ND_forall_intro *) contradict IHdeducible.
 Qed.
   
