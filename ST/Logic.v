@@ -438,13 +438,13 @@ Inductive deducible : list Formula -> Formula -> Prop :=
   Γ ⊢ P ->
   P :: Γ ⊢ Q ->
   Γ ⊢ Q
-| ND_exists_elim {Γ p q t} :
+| ND_exists_elim {Γ p q c} :
   Γ ⊢ (Exists p) -> 
-  t = fresh_evar Γ q ->
-  (subst_bvar_inner 0 t p)::Γ ⊢ q ->
+  c = fresh_evar Γ q ->
+  (subst_bvar_inner 0 c p)::Γ ⊢ q ->
   Γ ⊢ q
-| ND_exists_intro {Γ p c} :
-  Γ ⊢ (subst_bvar_inner 0 (constant c) p) -> 
+| ND_exists_intro {Γ p t} :
+  Γ ⊢ (subst_bvar_inner 0 t p) -> 
   Γ ⊢ Exists p
 | ND_forall_elim {Γ p t} :
   Γ ⊢ (Forall p) -> 
@@ -456,6 +456,10 @@ Inductive deducible : list Formula -> Formula -> Prop :=
 | ND_proof_by_contradiction {Γ p} :
   (Not p) :: Γ ⊢ Falsum ->
   Γ ⊢ p
+| ND_exists_elim_small {Γ p q c} :
+  (subst_bvar_inner 0 c p)::Γ ⊢ q -> 
+  c = fresh_evar Γ q ->
+  (Exists p)::Γ ⊢ q
 where "Γ ⊢ P" := (deducible Γ P).
 
 Definition proves (fm : Formula) : Prop := deducible List.nil fm.
@@ -637,14 +641,15 @@ intros Γ₁ Γ₂ ? P Q [] ?. revert Γ₂ H. induction H0; intros.
   apply IHdeducible2. do 2 f_equiv; assumption.
 + apply (ND_cut (P := P0)); auto.
   apply IHdeducible2. f_equiv. assumption.
-+ apply (ND_exists_elim (p := p) (q := q) (t := t)). auto.
-  assert (t = fresh_evar Γ₂ q). { admit. }
++ apply (ND_exists_elim (p := p) (q := q) (c := c)). auto.
+  assert (c = fresh_evar Γ₂ q). { admit. }
   assumption. apply IHdeducible2. f_equiv. assumption.
-+ apply (ND_exists_intro (p := p) (c := c)); auto.
++ apply (ND_exists_intro (p := p) (t := t)); auto.
 + apply (ND_forall_elim (p := p) (t := t)). auto.
 + apply (ND_forall_intro (p := p) (c := c)). auto.
   apply (fresh_cons_1 Γ Γ₂ p). apply H1. apply H.
 + apply ND_proof_by_contradiction. apply IHdeducible. f_equiv. auto.
++ admit.
 Admitted.
 (* Qed. *)
 
@@ -900,6 +905,133 @@ Proof.
   intros. apply (@ND_exfalso_quodlibet Γ (Not Verum)) in H.
   assumption.
 Qed.
+
+
+
+Lemma subst_negate {Γ p t} :
+  Γ ⊢ Not (subst_bvar_inner 0 t p) <->
+  Γ ⊢ subst_bvar_inner 0 t (Not p).
+Proof.
+  split.
+- intros; simpl; auto.
+- intros; simpl; auto.
+Qed.
+
+Check @ND_exists_intro.
+
+(** We can always eliminate the [Forall] quantifier, to just use
+[Exists], thanks to de Morgan's laws. This section gives us the
+experimental introduction and elimination rules of inference. *)
+Section ForallAbbreviation.
+Lemma vanill_exists_elim_soul {Γ p q t} :
+  (subst_bvar_inner 0 t p)::Γ ⊢ q -> 
+  t = fresh_evar Γ q -> 
+  Γ ⊢ Implies (Exists p) q.
+Proof.
+  intros.
+  assert ((subst_bvar_inner 0 t p) :: Γ ⊢ (subst_bvar_inner 0 t p)).
+  apply ND_assume; prove_In.
+  Check @ND_exists_elim_small.
+  apply (@ND_exists_elim_small Γ p q t) in H as H2. 2: assumption.
+  apply ND_imp_i2; assumption.
+Qed.
+
+Theorem vanilla_exists_elim {Γ p q t} :
+  (subst_bvar_inner 0 t p)::Γ ⊢ q -> t = fresh_evar Γ q -> (Exists p)::Γ ⊢ q.
+Proof.
+  intros.
+  apply ND_imp_i2 in H as H1.
+  apply vanill_exists_elim_soul in H as H2. 2: assumption.
+  assert (Γ ⊆ (Exists p :: Γ)). apply subcontext_weaken; apply subcontext_reflex.
+  
+  apply (@weakening Γ (Exists p :: Γ)) in H2 as H4.
+  assert ( (Exists p :: Γ) ⊢ Exists p). apply @ND_assume; prove_In.
+  apply (@ND_imp_e (Exists p :: Γ) (Exists p)) in H4 as H6. 
+  assumption. assumption. assumption.
+Qed.
+
+(** We can always eliminate the [Forall] quantifier, to just use
+[Exists], thanks to de Morgan's laws. This theorem gives us the
+"introduction rule" for this "abbreviated [Forall]" quantifier. *)
+Theorem forall_i {Γ p t} :
+  Γ ⊢ subst_bvar_inner 0 t p ->
+  t = fresh_evar Γ Falsum ->
+  Γ ⊢ Not (Exists (Not p)).
+Proof.
+  intros.
+  assert (Γ ⊢ Implies (subst_bvar_inner 0 t p)
+               (Not (Not (subst_bvar_inner 0 t p)))). apply ND_double_negation2.
+  rename H0 into Ha.
+  rename H1 into H0.
+  apply (@ND_imp_e Γ (subst_bvar_inner 0 t p)) in H0. 2: assumption.
+  assert (Γ ⊢ Not (Not (subst_bvar_inner 0 t p)) -> Γ ⊢ Not (subst_bvar_inner 0 t (Not p))). {
+    intros. simpl; auto.
+  }
+  apply H1 in H0.
+(* Thus we have established [H0 : Γ ⊢ Not (subst_bvar_inner 0 t (Not p))] *)
+  unfold Not. unfold Not in H0.
+  apply ND_imp_i2.
+  apply (@vanilla_exists_elim Γ (Not p) Falsum t).
+  assert (subst_bvar_inner 0 t (Not p) :: Γ ⊢ (subst_bvar_inner 0 t (Not p))). apply ND_assume; prove_In.
+  assert (Γ ⊆ (subst_bvar_inner 0 t (Not p) :: Γ)). apply subcontext_weaken; apply subcontext_reflex.
+  apply (@weakening Γ (subst_bvar_inner 0 t (Not p) :: Γ)) in H0.
+  apply (@ND_imp_e (subst_bvar_inner 0 t (Not p) :: Γ) (subst_bvar_inner 0 t (Not p))) in H0.
+  assumption. assumption. assumption. assumption.
+Qed.
+
+Check @ND_exists_elim.
+
+
+Theorem ND_neg_i {Γ p q} :
+  p::Γ ⊢ q -> p::Γ ⊢ Not q -> Γ ⊢ Not p.
+Admitted.
+
+
+
+Lemma subst_negate2 {Γ p t} :
+  Γ ⊢ Not (Not (subst_bvar_inner 0 t p)) <->
+  Γ ⊢ subst_bvar_inner 0 t (Not (Not p)).
+Proof.
+  split.
+- intros; simpl; auto.
+- intros; simpl; auto.
+Qed.
+
+Ltac Assume eqn :=
+  assert (eqn) by (apply ND_assume; prove_In).
+
+(** This proof imitates the [(Not (Exists p)) ⊢ Forall (Not p)]
+proof, to a large extent. It consists of two steps:
+
+Step 1: weaken the premises to establish the contradictory results that
+        [(Not p)[t], Γ ⊢ Not (Exists (Not p))] and 
+        [(Not p)[t], Γ ⊢ Exists (Not p)] both hold.
+
+Step 2: Infer that [Γ ⊢ Not (Not p[t])] holds. And then the law of
+        double negation gives the result. *)
+Theorem forall_elim {Γ p t} :
+  Γ ⊢ Not (Exists (Not p)) ->
+  Γ ⊢ subst_bvar_inner 0 t p.
+Proof. intros.
+  assert (Γ ⊆ (subst_bvar_inner 0 t (Not p) :: Γ)). apply subcontext_weaken; apply subcontext_reflex.
+  apply (@weakening Γ (subst_bvar_inner 0 t (Not p) :: Γ)) in H. 2: assumption.
+  Assume ((subst_bvar_inner 0 t (Not p) :: Γ) ⊢ (subst_bvar_inner 0 t (Not p))).
+  apply ND_exists_intro in H1.
+  apply (@ND_imp_e (subst_bvar_inner 0 t (Not p) :: Γ) (Exists (Not p)) Falsum) in H as H2. 2: assumption.
+  apply (@ND_neg_i Γ (subst_bvar_inner 0 t (Not p)) (Exists (Not p))) in H1 as H3.
+  2: assumption.
+  (* Thus we have proved, in [H3], that
+     [Γ ⊢ Not (subst_bvar_inner 0 t (Not p))]. 
+     We will just move the inner [Not] outside the substitution, then
+     use double negation law to prove this gives us the goal.*)
+  rewrite -> subst_negate in H3.
+  apply subst_negate2 in H3.
+  assert (Γ ⊢ Implies (Not (Not (subst_bvar_inner 0 t p))) (subst_bvar_inner 0 t p)).
+  apply ND_double_negation.
+  apply @ND_imp_e with (p := (Not (Not (subst_bvar_inner 0 t p)))) in H4.
+  assumption. assumption.
+Qed.
+End ForallAbbreviation.
 
 
 Theorem consistency : not (proves Falsum).
