@@ -239,6 +239,8 @@ Class Fresh A : Type := {
   fresh : name -> A -> Prop
 }.
 
+Check @Vector.Forall.
+
 Fixpoint fresh_term (c : name) (t : Term) : Prop :=
 match t with
 | Var (FVar x) => x <> c
@@ -275,14 +277,8 @@ Global Instance FreshFormula : Fresh Formula := {
   fresh := fresh_formula
 }.
 
-Fixpoint fresh_list (c : name) (Γ : list Formula) : Prop :=
-match Γ with
-| List.nil => True
-| List.cons p Γ' => (fresh c p) /\ (fresh_list c Γ')
-end.
-
 Global Instance FreshContext : Fresh (list Formula) := {
-  fresh := fresh_list
+  fresh c Γ := List.Forall (fun fm => fresh c fm) Γ
 }.
 
 (** ** New Existential Variables 
@@ -432,6 +428,7 @@ match phi with
 | Or fm1 fm2 => Or (shift_evars_formula fm1) (shift_evars_formula fm2)
 | Implies fm1 fm2 => Implies (shift_evars_formula fm1) (shift_evars_formula fm2)
 | Forall fm => Forall (shift_evars_formula fm)
+| Exists fm => Exists (shift_evars_formula fm)
 end.
 
 Global Instance ShiftEvarsFormula : ShiftEvars Formula := {
@@ -479,11 +476,13 @@ Inductive deducible : list Formula -> Formula -> Prop :=
   Γ ⊢ P ->
   P :: Γ ⊢ Q ->
   Γ ⊢ Q
+(*
 | ND_exists_elim {Γ p q c} :
   Γ ⊢ (Exists p) -> 
   c = fresh_evar Γ q ->
   (subst_bvar_inner 0 c p)::Γ ⊢ q ->
   Γ ⊢ q
+*)
 | ND_exists_intro {Γ p t} :
   Γ ⊢ (subst_bvar_inner 0 t p) -> 
   Γ ⊢ Exists p
@@ -501,6 +500,14 @@ Inductive deducible : list Formula -> Formula -> Prop :=
   (subst_bvar_inner 0 c p)::Γ ⊢ q -> 
   c = fresh_evar Γ q ->
   (Exists p)::Γ ⊢ q
+| ND_prioritize {Γ p q} :
+  Γ ⊢ q ->
+  In p Γ ->
+  p :: Γ ⊢ q
+| ND_unprioritize {Γ p q} :
+  p :: Γ ⊢ q ->
+  In p Γ ->
+  Γ ⊢ q
 where "Γ ⊢ P" := (deducible Γ P).
 
 Definition proves (fm : Formula) : Prop := deducible List.nil fm.
@@ -508,6 +515,18 @@ Definition proves (fm : Formula) : Prop := deducible List.nil fm.
 Hint Unfold GlobalContext LocalContext : typeclass_instances.
 Hint Constructors well_typed deducible : core.
 
+
+Theorem ND_exists_elim {Γ p q c} :
+  Γ ⊢ Exists p ->
+  c = fresh_evar Γ q ->
+  subst_bvar_inner 0 c p :: Γ ⊢ q -> Γ ⊢ q.
+Proof.
+  intros.
+  apply ND_exists_elim_small in H1.
+  apply ND_imp_i2 in H1. 
+  apply (@ND_imp_e Γ (Exists p) q ) in H1. 
+  assumption. assumption. assumption.
+Qed.
 
 (**
 I am being a bit cavalier here, but the only way to [prove Falsum]
@@ -585,6 +604,9 @@ match goal with
                        prove_subcontext
 end.
 
+Ltac Assume eqn :=
+  assert (eqn) by (apply ND_assume; prove_In).
+
 Import ListNotations.
 Open Scope list.
 
@@ -632,7 +654,13 @@ Qed.
 Lemma fresh_in_head : forall {c P Γ1 Γ2},
   (P :: Γ1) ⊆ Γ2 ->
   fresh c Γ2 -> fresh c P.
-Admitted.
+Proof.
+  intros. simpl; auto.
+  assert (In P0 Γ2). { apply subcontext_cons in H; destruct H; assumption. }
+  unfold fresh in H0; unfold FreshContext in H0.
+  apply (Forall_forall) with (P := (fun fm : Formula => fresh c fm)) in H1 as H2.
+  simpl; auto. simpl; auto.
+Qed.
 
 (* Suppose [Subcontext Γ1 Γ2]. If [fresh c Γ2], then [fresh c Γ1]. *)
 Global Instance fresh_cons_proper :
@@ -640,13 +668,14 @@ Global Instance fresh_cons_proper :
 Proof.
   intros P Q [] Γ1 Γ2 ?. unfold Basics.flip in H. unfold Basics.impl.
   intros H1.
-  unfold fresh; unfold FreshContext; unfold fresh_list.
+  unfold fresh; unfold FreshContext.
   induction Γ2. auto.
   assert (Γ2 ⊆ a :: Γ2). apply cons_subcontext.
   assert (Γ2 ⊆ Γ1).
   apply (subcontext_trans Γ2 (a :: Γ2) Γ1); assumption; assumption.
-  apply IHΓ2 in H2 as IH; split. apply (fresh_in_head H). assumption.
-  assumption.
+  apply Forall_cons_iff. split.
+  apply IHΓ2 in H2 as IH. apply (fresh_in_head H). assumption.
+  apply IHΓ2 in H2 as IH. assumption.
 Qed.
 
 Theorem fresh_cons_1 : forall (Γ1 Γ2 : list Formula) (P : Formula) (c : name),
@@ -656,6 +685,12 @@ Admitted.
 Theorem shift_subcontext : forall (Γ1 Γ2 : list Formula),
   Γ1 ⊆ Γ2 -> shift_evars Γ1 ⊆ shift_evars Γ2.
 Admitted.
+
+Lemma subcontext_in_trans {Γ1 Γ2 p} :
+  In p Γ1 -> Γ1 ⊆ Γ2 -> In p Γ2.
+Proof.
+  intros. simpl; auto.
+Qed.
 
 Global Instance ND_context_extension :
   Proper (subcontext ++> eq ==> Basics.impl) deducible.
@@ -674,18 +709,28 @@ intros Γ₁ Γ₂ ? P Q [] ?. revert Γ₂ H. induction H0; intros.
   apply IHdeducible2. do 2 f_equiv; assumption.
 + apply (ND_cut (P := P0)); auto.
   apply IHdeducible2. f_equiv. assumption.
-+ apply (ND_exists_elim (p := p) (q := q) (c := c)). auto.
-  assert (c = fresh_evar Γ₂ q). { admit. }
-  assumption. apply IHdeducible2. f_equiv. assumption.
 + apply (ND_exists_intro (p := p) (t := t)); auto.
 + apply (ND_forall_elim (p := p) (t := t)). auto.
 + apply (ND_forall_intro (p := p) (c := c)). auto.
   apply (fresh_cons_1 Γ Γ₂ p). apply H1. apply H.
 + apply ND_proof_by_contradiction. apply IHdeducible. f_equiv. auto.
-+ admit.
+
++ admit. (* apply (ND_unprioritize (p := Exists p) (Γ := Γ₂)).
+  apply (ND_exists_elim_small (Γ := Γ₂) (c := c)).
+  apply IHdeducible.
+
+Check @ND_exists_elim_small.
+ apply ND_exists_elim_small.
+ *)
++ Check @subcontext_cons.
+ apply (@subcontext_cons Γ Γ₂ p) in H1 as H2. apply IHdeducible. destruct H2. assumption.
++ apply IHdeducible. apply (@subcontext_cons Γ Γ₂ p). split.
+  apply (@subcontext_in_trans Γ Γ₂).
+assumption. assumption. assumption.
 Admitted.
 (* Qed. *)
 
+  
 Theorem weakening : forall (Γ1 Γ2 : list Formula) (P : Formula),
   Γ1 ⊢ P ->
   Γ1 ⊆ Γ2 ->
@@ -714,10 +759,8 @@ Theorem ND_or_idempotent : forall (P : Formula),
   [] ⊢ (Or P P) <-> [] ⊢ P.
 Proof. split. 
 - intros. apply (@ND_proof_by_cases [] P0 P0 P0). assumption.
-  assert (P0 :: [] ⊢ P0). { apply ND_assume; unfold In; left; reflexivity. }
-  assumption. 
-  assert (P0 :: [] ⊢ P0). { apply ND_assume; unfold In; left; reflexivity. }
-  assumption.
+  Assume (P0 :: [] ⊢ P0); assumption. 
+  Assume (P0 :: [] ⊢ P0); assumption.
 - intros. apply (@ND_or_intro_r [] P0 P0). assumption.
 Qed.
 
@@ -766,9 +809,10 @@ Theorem ND_True_intro {Γ} :
 Proof.
   unfold Verum. apply ND_implies_falsum_is_negation.
   apply ND_proof_by_contradiction.
-  assert (Not (Not Falsum) :: Γ ⊢ Not (Not Falsum)). apply ND_assume; prove_In.
+  Assume (Not (Not Falsum) :: Γ ⊢ Not (Not Falsum)). 
   assert (Not (Not Falsum) :: Γ ⊢ Implies (Not (Not Falsum)) Falsum).
-  apply ND_double_negation. apply (@ND_imp_e (Not (Not Falsum) :: Γ) (Not (Not Falsum)) Falsum) in H0.
+  apply ND_double_negation. 
+  apply (@ND_imp_e (Not (Not Falsum) :: Γ) (Not (Not Falsum)) Falsum) in H0.
   assumption. assumption.
 Qed.
 
@@ -849,9 +893,7 @@ Theorem ND_proj_l {Γ p q} :
   Γ ⊢ And p q -> Γ ⊢ p.
 Proof.
   intros.
-  assert (p :: q :: Γ ⊢ p). {
-    apply ND_assume. prove_In.
-  }
+  Assume (p :: q :: Γ ⊢ p).
   apply (@ND_and_elim Γ p q p) in H. assumption.
   assumption.
 Qed.
@@ -860,9 +902,7 @@ Theorem ND_proj_r {Γ p q} :
   Γ ⊢ And p q -> Γ ⊢ q.
 Proof.
   intros.
-  assert (p :: q :: Γ ⊢ q). {
-    apply ND_assume. prove_In.
-  }
+  Assume (p :: q :: Γ ⊢ q).
   apply (@ND_and_elim Γ p q q) in H. assumption.
   assumption.
 Qed.
@@ -874,7 +914,7 @@ Proof.
   intros.
   apply ND_imp_i2.
   assert (And p q :: Γ ⊢ p). {
-    assert (And p q :: Γ ⊢ And p q). apply ND_assume. prove_In.
+    Assume (And p q :: Γ ⊢ And p q).
     apply ND_proj_l in H0. assumption.
   }
   assert (Γ ⊆ (And p q :: Γ)). {
@@ -884,7 +924,7 @@ Proof.
   apply (weakening Γ (And p q :: Γ)) in H. 2: assumption.
   apply (@ND_imp_e (And p q :: Γ) p (Implies q r)) in H. 2: assumption.
   assert (And p q :: Γ ⊢ q). {
-    assert (And p q :: Γ ⊢ And p q). apply ND_assume. prove_In.
+    Assume (And p q :: Γ ⊢ And p q).
     apply ND_proj_r in H2. assumption.
   }
   apply (@ND_imp_e (And p q :: Γ) q r) in H. assumption. assumption.
@@ -927,7 +967,7 @@ Lemma negated_verum_is_falsum {Γ} :
   Γ ⊢ Implies Falsum (Not Verum).
 Proof.
   intros. apply ND_imp_i2. 
-  assert (Falsum :: Γ ⊢ Falsum). apply ND_assume; prove_In.
+  Assume (Falsum :: Γ ⊢ Falsum).
   apply (@ND_exfalso_quodlibet (Falsum :: Γ) (Not Verum)) in H.
   assumption.
 Qed.
@@ -956,33 +996,6 @@ Check @ND_exists_intro.
 [Exists], thanks to de Morgan's laws. This section gives us the
 experimental introduction and elimination rules of inference. *)
 Section ForallAbbreviation.
-Lemma vanill_exists_elim_soul {Γ p q t} :
-  (subst_bvar_inner 0 t p)::Γ ⊢ q -> 
-  t = fresh_evar Γ q -> 
-  Γ ⊢ Implies (Exists p) q.
-Proof.
-  intros.
-  assert ((subst_bvar_inner 0 t p) :: Γ ⊢ (subst_bvar_inner 0 t p)).
-  apply ND_assume; prove_In.
-  Check @ND_exists_elim_small.
-  apply (@ND_exists_elim_small Γ p q t) in H as H2. 2: assumption.
-  apply ND_imp_i2; assumption.
-Qed.
-
-Theorem vanilla_exists_elim {Γ p q t} :
-  (subst_bvar_inner 0 t p)::Γ ⊢ q -> t = fresh_evar Γ q -> (Exists p)::Γ ⊢ q.
-Proof.
-  intros.
-  apply ND_imp_i2 in H as H1.
-  apply vanill_exists_elim_soul in H as H2. 2: assumption.
-  assert (Γ ⊆ (Exists p :: Γ)). apply subcontext_weaken; apply subcontext_reflex.
-  
-  apply (@weakening Γ (Exists p :: Γ)) in H2 as H4.
-  assert ( (Exists p :: Γ) ⊢ Exists p). apply @ND_assume; prove_In.
-  apply (@ND_imp_e (Exists p :: Γ) (Exists p)) in H4 as H6. 
-  assumption. assumption. assumption.
-Qed.
-
 (** We can always eliminate the [Forall] quantifier, to just use
 [Exists], thanks to de Morgan's laws. This theorem gives us the
 "introduction rule" for this "abbreviated [Forall]" quantifier. *)
@@ -991,7 +1004,7 @@ Theorem forall_i {Γ p t} :
   t = fresh_evar Γ Falsum ->
   Γ ⊢ Not (Exists (Not p)).
 Proof.
-  intros.
+  intros. Check @ND_exists_elim_small.
   assert (Γ ⊢ Implies (subst_bvar_inner 0 t p)
                (Not (Not (subst_bvar_inner 0 t p)))). apply ND_double_negation2.
   rename H0 into Ha.
@@ -1004,16 +1017,13 @@ Proof.
 (* Thus we have established [H0 : Γ ⊢ Not (subst_bvar_inner 0 t (Not p))] *)
   unfold Not. unfold Not in H0.
   apply ND_imp_i2.
-  apply (@vanilla_exists_elim Γ (Not p) Falsum t).
-  assert (subst_bvar_inner 0 t (Not p) :: Γ ⊢ (subst_bvar_inner 0 t (Not p))). apply ND_assume; prove_In.
+  apply (@ND_exists_elim_small Γ (Not p) Falsum t).
+  Assume (subst_bvar_inner 0 t (Not p) :: Γ ⊢ (subst_bvar_inner 0 t (Not p))). 
   assert (Γ ⊆ (subst_bvar_inner 0 t (Not p) :: Γ)). apply subcontext_weaken; apply subcontext_reflex.
   apply (@weakening Γ (subst_bvar_inner 0 t (Not p) :: Γ)) in H0.
   apply (@ND_imp_e (subst_bvar_inner 0 t (Not p) :: Γ) (subst_bvar_inner 0 t (Not p))) in H0.
   assumption. assumption. assumption. assumption.
 Qed.
-
-Check @ND_exists_elim.
-
 
 Theorem ND_neg_i {Γ p q} :
   p :: Γ ⊢ q -> p :: Γ ⊢ (Not q) -> Γ ⊢ Not p.
@@ -1033,9 +1043,6 @@ Proof.
 - intros; simpl; auto.
 - intros; simpl; auto.
 Qed.
-
-Ltac Assume eqn :=
-  assert (eqn) by (apply ND_assume; prove_In).
 
 (** This proof imitates the [(Not (Exists p)) ⊢ Forall (Not p)]
 proof, to a large extent. It consists of two steps:
