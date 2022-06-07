@@ -1015,7 +1015,7 @@ Section ForallAbbreviation.
 Theorem ND_forall_i {Γ p t} :
   Γ ⊢ subst_bvar_inner 0 t p ->
   t = fresh_evar Γ Falsum ->
-  Γ ⊢ Not (Exists (Not p)).
+  Γ ⊢ Forall p.
 Proof.
   intros. Check @ND_exists_elim_small.
   assert (Γ ⊢ Implies (subst_bvar_inner 0 t p)
@@ -1067,7 +1067,7 @@ Step 1: weaken the premises to establish the contradictory results that
 Step 2: Infer that [Γ ⊢ Not (Not p[t])] holds. And then the law of
         double negation gives the result. *)
 Theorem ND_forall_elim {Γ p t} :
-  Γ ⊢ Not (Exists (Not p)) ->
+  Γ ⊢ Forall p ->
   Γ ⊢ subst_bvar_inner 0 t p.
 Proof. intros.
   assert (Γ ⊆ (subst_bvar_inner 0 t (Not p) :: Γ)). apply subcontext_weaken; apply subcontext_reflex.
@@ -1138,4 +1138,4 @@ Proof.
   - (* ND_forall_intro *) contradict IHdeducible.
   - (* ND_proof_by_contradiction *) contradict IHdeducible.
 Qed.
-  
+
