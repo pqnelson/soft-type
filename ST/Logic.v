@@ -75,11 +75,11 @@ Inductive Formula : Type :=
 | And : Formula -> Formula -> Formula
 | Or : Formula -> Formula -> Formula
 | Implies : Formula -> Formula -> Formula
-| Forall : Formula -> Formula
 | Exists : Formula -> Formula.
 
 Definition Not (p : Formula) := Implies p Falsum.
 Definition Verum : Formula := Implies Falsum Falsum.
+Definition Forall (p : Formula) := Not (Exists (Not p)).
 
 (** We can recursively test if two [Formula] objects are identical. This is an
 equality at the level of syntax. *)
@@ -93,7 +93,6 @@ match A,B with
 | And A1 A2, And B1 B2 => andb (eq_formula A1 B1) (eq_formula A2 B2)
 | Or A1 A2, Or B1 B2 => andb (eq_formula A1 B1) (eq_formula A2 B2)
 | Implies A1 A2, Implies B1 B2 =>  andb (eq_formula A1 B1) (eq_formula A2 B2)
-| Forall A1, Forall B1 => eq_formula A1 B1
 | Exists A1, Exists B1 => eq_formula A1 B1
 | _, _ => false
 end.
@@ -113,7 +112,6 @@ match phi with
 | And fm1 fm2 => And (var_closing_iter x n fm1) (var_closing_iter x n fm2)
 | Or fm1 fm2 => Or (var_closing_iter x n fm1) (var_closing_iter x n fm2)
 | Implies fm1 fm2 => Implies (var_closing_iter x n fm1) (var_closing_iter x n fm2)
-| Forall fm => Forall (var_closing_iter x (S n) fm)
 | Exists fm => Exists (var_closing_iter x (S n) fm)
 end.
 
@@ -136,7 +134,6 @@ match phi with
 | And fm1 fm2 => And (subst_bvar_inner n t fm1) (subst_bvar_inner n t fm2)
 | Or fm1 fm2 => Or (subst_bvar_inner n t fm1) (subst_bvar_inner n t fm2)
 | Implies fm1 fm2 => Implies (subst_bvar_inner n t fm1) (subst_bvar_inner n t fm2)
-| Forall fm => Forall (subst_bvar_inner (S n) (lift (S n) 1 t) fm)
 | Exists fm => Exists (subst_bvar_inner (S n) (lift (S n) 1 t) fm)
 end.
 
@@ -145,7 +142,6 @@ amounts to the same "operations" of peeling off an outermost quantifier, then
 behaving as expected. *)
 Fixpoint quantifier_elim_subst (n : nat) (t : Term) (phi : Formula) : Formula :=
 match phi with
-| Forall fm => subst_bvar_inner n t fm
 | Exists fm => subst_bvar_inner n t fm
 | And A B => And (quantifier_elim_subst n t A) (quantifier_elim_subst n t B)
 | Or A B => Or (quantifier_elim_subst n t A) (quantifier_elim_subst n t B)
@@ -154,7 +150,7 @@ match phi with
 end.
 
 Example subst_bvar_1 : quantifier_elim_subst 0 (Fun "t" []) (Forall (Exists (Atom (P 2 "P" [Var (BVar 0); Var (BVar 1)]))))
-= Exists (Atom (P 2 "P" [Var (BVar 0); Fun "t" []])).
+= Not (Not (Exists (Atom (P 2 "P" [Var (BVar 0); Fun "t" []])))).
 Proof.
   trivial.
 Qed.
@@ -166,7 +162,6 @@ Fixpoint lift_formula (c d : nat) (phi : Formula) : Formula :=
   | And fm1 fm2 => And (lift_formula c d fm1) (lift_formula c d fm2)
   | Or fm1 fm2 => Or (lift_formula c d fm1) (lift_formula c d fm2)
   | Implies fm1 fm2 => Implies (lift_formula c d fm1) (lift_formula c d fm2)
-  | Forall fm => Forall (lift_formula (S c) d fm)
   | Exists fm => Exists (lift_formula (S c) d fm)
   end.
 
@@ -270,7 +265,7 @@ Fixpoint fresh_formula (c : name) (p : Formula) : Prop :=
   | Falsum => True
   | Atom phi => fresh c phi
   | And A B | Or A B | Implies A B => (fresh_formula c A) /\ (fresh_formula c B)
-  | Forall A | Exists A => fresh_formula c A
+  | Exists A => fresh_formula c A
   end.
   
 Global Instance FreshFormula : Fresh Formula := {
@@ -377,7 +372,7 @@ match phi with
 | Falsum => []%list
 | Atom pred => list_evars pred
 | And fm1 fm2 | Or fm1 fm2 | Implies fm1 fm2 => insert_merge (list_evars_formula fm1) (list_evars_formula fm2)
-| Forall fm | Exists fm => (list_evars_formula fm)
+| Exists fm => (list_evars_formula fm)
 end.
 
 Global Instance EnumerateEVarsFormula : EnumerateEVars Formula := {
@@ -427,7 +422,6 @@ match phi with
 | And fm1 fm2 => And (shift_evars_formula fm1) (shift_evars_formula fm2)
 | Or fm1 fm2 => Or (shift_evars_formula fm1) (shift_evars_formula fm2)
 | Implies fm1 fm2 => Implies (shift_evars_formula fm1) (shift_evars_formula fm2)
-| Forall fm => Forall (shift_evars_formula fm)
 | Exists fm => Exists (shift_evars_formula fm)
 end.
 
@@ -476,23 +470,9 @@ Inductive deducible : list Formula -> Formula -> Prop :=
   Γ ⊢ P ->
   P :: Γ ⊢ Q ->
   Γ ⊢ Q
-(*
-| ND_exists_elim {Γ p q c} :
-  Γ ⊢ (Exists p) -> 
-  c = fresh_evar Γ q ->
-  (subst_bvar_inner 0 c p)::Γ ⊢ q ->
-  Γ ⊢ q
-*)
 | ND_exists_intro {Γ p t} :
   Γ ⊢ (subst_bvar_inner 0 t p) -> 
   Γ ⊢ Exists p
-| ND_forall_elim {Γ p t} :
-  Γ ⊢ (Forall p) -> 
-  Γ ⊢ (quantifier_elim_subst 0 t p)
-| ND_forall_intro {Γ p c} :
-  Γ ⊢ (subst_bvar_inner 0 (Var (FVar c)) p) -> 
-  fresh c Γ ->
-  Γ ⊢ every c p
 | ND_proof_by_contradiction {Γ p} :
   (Not p) :: Γ ⊢ Falsum ->
   Γ ⊢ p
@@ -515,6 +495,25 @@ Definition proves (fm : Formula) : Prop := deducible List.nil fm.
 Hint Unfold GlobalContext LocalContext : typeclass_instances.
 Hint Constructors well_typed deducible : core.
 
+(* These next two lemmas are "obvious", but obnoxious to prove.
+So I'm...lazy. *)
+Lemma exists_elim_freshness {Γ q} :
+  (EConst 0) = fresh_evar (shift_evars Γ) (shift_evars q).
+Admitted.
+
+Lemma exists_evar_shift {Γ p q} :
+  Exists p :: Γ ⊢ q <-> (shift_evars (Exists p))::(shift_evars Γ) ⊢ (shift_evars q).
+Admitted.
+
+Theorem exists_elim {Γ p q} :
+  (subst_bvar_inner 0 (EConst 0) (shift_evars p))::(shift_evars Γ) ⊢ (shift_evars q) -> 
+  (Exists p)::Γ ⊢ q.
+Proof.
+  intros.
+  apply exists_evar_shift.
+  apply (ND_exists_elim_small (c := (EConst 0))). assumption.
+  apply exists_elim_freshness.
+Qed.
 
 Theorem ND_exists_elim {Γ p q c} :
   Γ ⊢ Exists p ->
@@ -678,14 +677,6 @@ Proof.
   apply IHΓ2 in H2 as IH. assumption.
 Qed.
 
-Theorem fresh_cons_1 : forall (Γ1 Γ2 : list Formula) (P : Formula) (c : name),
-  Γ1 ⊆ Γ2 -> fresh c Γ1 -> fresh c Γ2.
-Admitted.
-
-Theorem shift_subcontext : forall (Γ1 Γ2 : list Formula),
-  Γ1 ⊆ Γ2 -> shift_evars Γ1 ⊆ shift_evars Γ2.
-Admitted.
-
 Lemma subcontext_in_trans {Γ1 Γ2 p} :
   In p Γ1 -> Γ1 ⊆ Γ2 -> In p Γ2.
 Proof.
@@ -710,9 +701,6 @@ intros Γ₁ Γ₂ ? P Q [] ?. revert Γ₂ H. induction H0; intros.
 + apply (ND_cut (P := P0)); auto.
   apply IHdeducible2. f_equiv. assumption.
 + apply (ND_exists_intro (p := p) (t := t)); auto.
-+ apply (ND_forall_elim (p := p) (t := t)). auto.
-+ apply (ND_forall_intro (p := p) (c := c)). auto.
-  apply (fresh_cons_1 Γ Γ₂ p). apply H1. apply H.
 + apply ND_proof_by_contradiction. apply IHdeducible. f_equiv. auto.
 
 + admit. (* apply (ND_unprioritize (p := Exists p) (Γ := Γ₂)).
@@ -999,7 +987,7 @@ Section ForallAbbreviation.
 (** We can always eliminate the [Forall] quantifier, to just use
 [Exists], thanks to de Morgan's laws. This theorem gives us the
 "introduction rule" for this "abbreviated [Forall]" quantifier. *)
-Theorem forall_i {Γ p t} :
+Theorem ND_forall_i {Γ p t} :
   Γ ⊢ subst_bvar_inner 0 t p ->
   t = fresh_evar Γ Falsum ->
   Γ ⊢ Not (Exists (Not p)).
@@ -1053,7 +1041,7 @@ Step 1: weaken the premises to establish the contradictory results that
 
 Step 2: Infer that [Γ ⊢ Not (Not p[t])] holds. And then the law of
         double negation gives the result. *)
-Theorem forall_elim {Γ p t} :
+Theorem ND_forall_elim {Γ p t} :
   Γ ⊢ Not (Exists (Not p)) ->
   Γ ⊢ subst_bvar_inner 0 t p.
 Proof. intros.
@@ -1091,7 +1079,7 @@ Proof.
   - (* ND_and_intro *) contradict IHdeducible1.
   - (* ND_and_elim *) contradict IHdeducible1.
   - (* ND_cut *) contradict IHdeducible1.
-  - (* ND_exists_elim *) contradict IHdeducible1.
+  - (* ND_exists_elim *) contradict IHdeducible.
   - (* ND_exists_intro *) contradict IHdeducible.
   - (* ND_forall_elim *) contradict IHdeducible.
   - (* ND_forall_intro *) contradict IHdeducible.
