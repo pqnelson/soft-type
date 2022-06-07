@@ -1016,10 +1016,14 @@ Check @ND_exists_elim.
 
 
 Theorem ND_neg_i {Γ p q} :
-  p::Γ ⊢ q -> p::Γ ⊢ Not q -> Γ ⊢ Not p.
-Admitted.
-
-
+  p :: Γ ⊢ q -> p :: Γ ⊢ (Not q) -> Γ ⊢ Not p.
+Proof.
+  intros.
+  unfold Not in H0.
+  apply (@ND_imp_e (p :: Γ) q Falsum) in H0. 2: assumption.
+  apply (@ND_imp_i2 Γ p Falsum) in H0.
+  simpl; auto.
+Qed.
 
 Lemma subst_negate2 {Γ p t} :
   Γ ⊢ Not (Not (subst_bvar_inner 0 t p)) <->
