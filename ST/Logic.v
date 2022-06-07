@@ -894,7 +894,6 @@ Proof.
   apply (@ND_and_elim Γ p q q) in H. assumption.
   assumption.
 Qed.
-  
 
 Theorem ND_uncurry {Γ p q r} : 
   Γ ⊢ Implies p (Implies q r) -> Γ ⊢ Implies (And p q) r.
@@ -908,7 +907,6 @@ Proof.
   assert (Γ ⊆ (And p q :: Γ)). {
     apply subcontext_weaken. apply subcontext_reflex.
   }
-  Check weakening.
   apply (weakening Γ (And p q :: Γ)) in H. 2: assumption.
   apply (@ND_imp_e (And p q :: Γ) p (Implies q r)) in H. 2: assumption.
   assert (And p q :: Γ ⊢ q). {
@@ -916,6 +914,33 @@ Proof.
     apply ND_proj_r in H2. assumption.
   }
   apply (@ND_imp_e (And p q :: Γ) q r) in H. assumption. assumption.
+Qed.
+
+Theorem ND_curry_tautology {Γ p q r} :
+  Γ ⊢ Implies (Implies (And p q) r) (Implies p (Implies q r)).
+Proof.
+  intros.
+  Assume (q::p::(Implies (And p q) r)::Γ ⊢ (Implies (And p q) r)).
+  Assume (q::p::(Implies (And p q) r)::Γ ⊢ p).
+  Assume (q::p::(Implies (And p q) r)::Γ ⊢ q).
+  apply (@ND_and_intro (q::p :: Implies (And p q) r :: Γ) p q) in H1 as H3.
+  apply (@ND_imp_e (q::p :: Implies (And p q) r :: Γ) (And p q) r) in H as H4.
+  apply (@ND_imp_i2 (p :: Implies (And p q) r :: Γ)) in H4.
+  apply (@ND_imp_i2 (Implies (And p q) r :: Γ)) in H4.
+  apply ND_imp_i2 in H4.
+  assumption. 
+  assumption. assumption.
+Qed.
+
+Theorem ND_curry {Γ p q r} :
+  Γ ⊢ Implies (And p q) r -> Γ ⊢ Implies p (Implies q r).
+Proof.
+  intros.
+  assert (Γ ⊢ Implies (Implies (And p q) r) (Implies p (Implies q r))). {
+  apply (@ND_curry_tautology Γ p q r).
+  }
+  apply (ND_imp_e (p := (Implies (And p q) r))) in H0.
+  assumption. assumption.
 Qed.
 
 Theorem ND_double_negation2 {Γ p} : 
@@ -1065,6 +1090,34 @@ Proof. intros.
 Qed.
 End ForallAbbreviation.
 
+Theorem contrapositive {Γ p q} :
+  Γ ⊢ (Implies (Implies p q) (Implies (Not q) (Not p))).
+Proof.
+  intros. 
+  Assume(p::(Not q)::(Implies p q)::Γ ⊢ p).
+  Assume(p::(Not q)::(Implies p q)::Γ ⊢ (Implies p q)).
+  apply (@ND_imp_e (p:: Not q :: Implies p q :: Γ) p q) in H0 as H1.
+  2: assumption.
+  Assume(p::(Not q)::(Implies p q)::Γ ⊢ Not q).
+  Check @ND_neg_i.
+  Check @ND_not_i.
+  apply (@ND_neg_i (Not q :: Implies p q :: Γ)) in H1.
+  apply (@ND_imp_i2 (Implies p q :: Γ) (Not q) (Not p)) in H1. 2: assumption.
+  apply ND_imp_i2 in H1.
+  assumption.
+Qed.
+
+Theorem modus_tollen {Γ p q} :
+  Γ ⊢ (Implies p q) -> Γ ⊢ (Not q) -> Γ ⊢ (Not p).
+Proof.
+  intros.
+  assert (Γ ⊢ (Implies (Implies p q) (Implies (Not q) (Not p)))). {
+  apply (@contrapositive Γ p q).
+  }
+  apply (@ND_imp_e Γ (Implies p q)) in H1. 2: assumption.
+  apply (@ND_imp_e Γ (Not q) (Not p)) in H1.
+  assumption. assumption.
+Qed.
 
 Theorem consistency : not (proves Falsum).
 Proof.
