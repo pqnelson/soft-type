@@ -234,7 +234,8 @@ Class Fresh A : Type := {
   fresh : Term -> A -> Prop
 }.
 
-Check @Vector.Forall.
+Section FreshTermDefinition.
+(* Require Import Coq.Vectors.VectorEq. *)
 
 Fixpoint fresh_term (c : Term) (t : Term) : Prop :=
 match t, c with
@@ -249,6 +250,7 @@ match t, c with
   in fresh_args args1
 | _,_ => True
 end.
+End FreshTermDefinition.
 
 Global Instance FreshTerm : Fresh Term := {
   fresh := fresh_term
@@ -425,6 +427,263 @@ list_evars Γ := (List.fold_left (fun l' => fun (phi : Formula) => insert_merge 
 
 Hypothesis list_evars_formula_list_sorted : forall (l : list Formula),
   sorted (list_evars l).
+
+Require Import Nat.
+Require Import Coq.Arith.PeanoNat.
+  Check Nat.eqb_eq.
+
+Lemma first_new_cons {l n} :
+  first_new n (n :: l) = first_new (S n) l.
+Proof.
+  assert(n = n). reflexivity.
+  apply Nat.eqb_eq in H as H1.
+  simpl; auto. rewrite H1. reflexivity.
+Qed.
+
+Lemma neq_neqb : forall (n k : nat),
+  n <> k <-> Nat.eqb n k = false.
+Proof. intros. revert n.
+  induction k as [|k IHk]; intro n; destruct n; simpl; rewrite ?IHk; split; try easy.
+  - intros. assert (n <> k). red; auto. apply IHk in H0. assumption.
+  - intros. apply IHk in H. red; auto.
+Qed.
+
+Lemma first_new_distinct {l a n} :
+  a <> n -> first_new n (a :: l) = first_new n l.
+Proof. 
+  intros. 
+  apply neq_neqb in H as H1.
+  simpl; auto. rewrite H1. 
+  reflexivity.
+Qed.
+
+Lemma fresh_new_step {l n k} :
+  first_new n l = first_new n (k::l) \/ first_new (S n) l = first_new n (k::l).
+Proof.
+  assert({k = n} + {k <> n}). decide equality. destruct H.
+  - right. rewrite e. symmetry. apply first_new_cons.
+  - left. apply (@first_new_distinct l k n) in n0. symmetry; assumption.
+Qed.
+
+Lemma first_new_nondecreasing {l n} :
+  n <= first_new n l.
+Proof. generalize dependent n.
+  induction l. 
+  - simpl; auto.
+  - intros. assert ({a = n} + {a <> n}). decide equality.
+    destruct H.
+  -- rewrite e. 
+     assert (first_new n (n :: l) = first_new (S n) l).
+     apply first_new_cons. rewrite H.
+     assert (S n <= first_new (S n) l). apply (@IHl (S n)).
+     intuition.
+  -- assert(first_new n l = first_new n (a :: l)). symmetry. apply (@first_new_distinct l a n).
+     assumption. rewrite <- H.
+     apply IHl.
+Qed.  
+
+Lemma fresh_succ_nonzero {l n} :
+  0 < first_new (S n) l.
+Proof.
+  intros. generalize dependent n. induction l.
+  - simpl; auto. apply Nat.lt_0_succ.
+  - intros. destruct (@fresh_new_step l (S n) a).
+  + rewrite <- H. apply IHl.
+  + rewrite <- H. apply (IHl (S n)).
+Qed.
+
+(*
+Lemma first_new_cons_inv {l n a} :
+  a = n <-> first_new n (a :: l) = first_new (S n) l.
+Proof.
+  assert ({a = n} + {a <> n}). decide equality. destruct H.
+  - split.
+  -- rewrite e. intros. apply first_new_cons.
+  -- intros; assumption.
+  - split. contradiction. intros. inversion H.
+    assert (Nat.eqb a n  = false). { apply neq_neqb. assumption. }
+    rewrite H0 in H1.
+  split. 
+  - intros. rewrite H. apply first_new_cons.
+  - intros. inversion H.
+  assert(n = n). reflexivity.
+  apply Nat.eqb_eq in H as H1.
+  simpl; auto. rewrite H1. reflexivity.
+Qed.
+*)
+Require Import Coq.Arith.Compare.
+
+Lemma first_new_on_different_args {l m n} :
+  m <= n -> first_new m l <= first_new n l.
+Proof.
+  intros. generalize dependent m. generalize dependent n.
+  induction l.
+  - simpl; auto.
+  - intros.
+    assert ({n = a} + {n <> a}). decide equality. destruct H0.
+  + assert (first_new n (n :: l) = first_new (S n) l). apply first_new_cons.
+    assert ({m = a} + {m <> a}). decide equality. destruct H1.
+  ++ rewrite e0; rewrite <- e. reflexivity.
+  ++ (* m <> a && n = a *)
+    assert (first_new m (a :: l) = first_new m l). {
+    apply (@first_new_distinct l a m); intuition.
+    }
+    rewrite H1. 
+    assert (n <= first_new n (a :: l)). { apply first_new_nondecreasing. }
+    rewrite <- e; rewrite H0. apply IHl. intuition.
+  + (* n <> a *)
+    assert (first_new n (a :: l) = first_new n l). { apply (@first_new_distinct l a n); intuition. }
+    assert ({m = a} + {m <> a}). decide equality. destruct H1.
+  ++ (* n <> a && m = a *)
+     assert (first_new m (a :: l) = first_new (S m) l). {
+       rewrite <- e; apply first_new_cons.
+     }
+     Check le_le_S_eq.
+     assert (S m <= n \/ m = n). { apply le_le_S_eq in H. assumption. }
+     destruct H2.
+ +++ (* S m <= n *)
+     rewrite H0. rewrite H1. apply IHl. intuition.
+ +++ rewrite H2. reflexivity.
+ ++ assert (first_new m (a :: l) = first_new m l). { apply (@first_new_distinct l a m); intuition. }
+    rewrite H1; rewrite H0. apply IHl. assumption.
+Qed.
+
+Require Import Lia.
+Require Import Coq.Lists.ListDec Decidable.
+
+Theorem first_new_sorted {l n} :
+  sorted l -> ~(In (first_new n l) l).
+Proof. intros.
+  inversion H.
+  - simpl; auto.
+  - assert({x = n} + {x <> n}). decide equality. destruct H1.
+  + rewrite e.
+    assert (first_new n [n] = first_new (S n) []). apply (@first_new_cons List.nil).
+    rewrite H1. unfold first_new. apply not_in_cons. simpl; auto.
+  + assert(first_new n [x] = first_new n []). { apply first_new_distinct. assumption. } 
+    rewrite H1. unfold first_new. apply not_in_cons. simpl; auto.
+  - admit.
+Qed.
+
+Lemma first_new_is_not_in_list {l n} :
+  ~(In (first_new n l) l).
+Proof. generalize dependent n.
+  induction l.
+  - simpl; auto.
+  - intros. assert({a = n} + {a <> n}). decide equality. destruct H.
+ -- (* a = n *) 
+    assert(first_new n (a::l) = first_new (S n) l). { rewrite e. apply first_new_cons. }
+    apply not_in_cons. split.
+    + rewrite e; apply not_eq_sym; apply first_new_distinct2.
+    + rewrite H. apply IHl.
+ -- (* a <> n *)
+    apply not_in_cons. split.
+    + apply first_new_distinct3.
+    + apply (first_new_distinct (l := l)) in n0 as H. rewrite H. apply IHl.
+Qed.
+
+Lemma first_new_is_new {l n} :
+  forall (x : nat), In x l -> first_new n l <> x.
+Proof.
+  induction l.
+  - simpl; auto.
+  - intros. assert ({a = n} + {a <> n}). decide equality. destruct H0.
+ -- (* Case: a = n *) 
+    rewrite e.
+    assert(first_new n (n::l) = first_new (S n) l). { apply first_new_cons. }
+    rewrite H0.
+    apply in_inv in H. destruct H. rewrite <- H; rewrite e.
+    assert (S n <= first_new (S n) l). apply first_new_nondecreasing. lia.
+    apply IHl. assumption.
+ -- (* Case: a <> n *) 
+    apply in_inv in H. destruct H.
+    + rewrite H; rewrite H in n0.
+      assert(first_new n (x::l) = first_new n l). { apply first_new_distinct. assumption. }
+      rewrite H0.
+      assert(decidable (In x l)). { apply (In_decidable Nat.eq_decidable). }
+      destruct H1.
+   ++ apply (IHl n x) in H1. assumption.
+   ++ assert (n <= first_new n l). { apply first_new_nondecreasing. }
+      
+    lia.
+    
+  induction l.
+  - simpl; auto.
+  - intros. assert ({a = n} + {a <> n}). decide equality. destruct H0.
+ -- (* Case: a = n *) 
+    rewrite e.
+    assert(first_new n (n::l) = first_new (S n) l). { apply first_new_cons. }
+    rewrite H0.
+    apply in_inv in H. destruct H. rewrite <- H; rewrite e.
+    assert (S n <= first_new (S n) l). apply first_new_nondecreasing. lia.
+    apply IHl. assumption.
+ -- (* Case: a <> n *) 
+    apply in_inv in H. destruct H.
+    + rewrite H; rewrite H in n0.
+      assert(first_new n (x::l) = first_new n l). { apply first_new_distinct. assumption. }
+      rewrite H0.
+    Check @first_new_nondecreasing.
+ -- (* a = x *)
+    rewrite H. intros.
+    
+ -- (* In x l *)
+  assert ({a = n} + {a <> n}). decide equality. destruct H.
+  - assert(first_new n (n::l) = first_new (S n) l). { apply first_new_cons. }
+    rewrite e. rewrite H. Check @first_new_nondecreasing.
+    assert (S n <= first_new (S n) l). { apply first_new_nondecreasing. }
+    lia.
+  - assert(first_new n (a::l) = first_new n l). { apply first_new_distinct. assumption. }
+    
+(* 
+@first_new_nondecreasing
+     : forall (l : list nat) (n : nat),
+       n <= first_new n l
+*)
+    
+    unfold first_new. lia.
+  induction l.
+  - destruct H.
+ -- assert(first_new n [n] = first_new (S n) []). { apply first_new_cons. }
+    rewrite e. rewrite H. unfold first_new. lia.
+ -- Check @first_new_distinct.
+  apply (@first_new_distinct List.nil a n) in n0 as H.
+    rewrite H. unfold first_new. intuition.
+  - 
+   destruct H.
+  - assert(first_new n (n :: l) = first_new (S n) l). { apply first_new_cons. }
+    rewrite <- H.
+Qed.
+
+
+
+Theorem first_new_is_not_on_list {l n} :
+  ~In (first_new n l) l.
+Proof.
+  generalize dependent n. induction l.
+  - simpl; auto.
+  - intros. apply not_in_cons. split.
+ -- assert ({n = a} + {n <> a}). decide equality. destruct H.
+--- rewrite <- e.
+    assert(first_new n (n :: l) = first_new (S n) l). { apply first_new_cons. }
+    rewrite H. intuition.
+    
+Lemma first_new_is_new {l a n} :
+  first_new n (a::l) <> a.
+  
+  set (t := (first_new n (a :: l))).
+    apply not_in_cons. split. 
+  -- (* Subcase: t <> a *)
+     assert ({n = a} + {n <> a}). decide equality. destruct H.
+     + (* Sub-subcase: t = first_new n (n :: l) *)
+       assert (t = first_new n (n :: l)).
+       assert (t = first_new n (a :: l)). simpl; auto.
+       rewrite <- e in H. assumption.
+       apply (first_new_cons n l) in H.
+       
+      apply first_new_cons.
+    rewrite <- e in t. 
+  unfold first_new in (first_new n (a :: l)).
+  intros.
 
 Definition fresh_evar_counter (Γ : list Formula) (p : Formula) : nat :=
 first_new 0 (list_evars (p::Γ)%list).
@@ -1176,6 +1435,36 @@ Proof.
   apply (@ND_imp_e Γ (Not q) (Not p)) in H1.
   assumption. assumption.
 Qed.
+
+(** We can now summarize the results which will be crucial in
+proving the correctness of the translation. *)
+Section ImportantTheorems.
+Theorem forall_implies_reflex {Γ p} :
+  Γ ⊢ Forall (Implies p p).
+Proof.
+  set (t := fresh_evar Γ Falsum).
+  apply (@ND_forall_i Γ (Implies p p) t). 2: auto.
+  simpl; auto.
+  apply ND_imp_i2; apply ND_assume; prove_In.
+Qed.
+
+Theorem exists_modus_ponens_tautology {Γ p q} :
+  Γ ⊢ (Implies (Forall (Implies p q)) (Implies (Exists p) (Exists q))).
+Proof.
+  Assume ((Exists p) :: (Forall (Implies p q)) :: Γ ⊢ (Forall (Implies p q))).
+  Assume ((Exists p) :: (Forall (Implies p q)) :: Γ ⊢ (Exists p)).
+  set (t := fresh_evar ((Exists p) :: (Forall (Implies p q)) :: Γ) q).
+  apply (ND_forall_elim (t := t)) in H. simpl in H.
+  apply (ND_exists_elim (Γ := Exists p :: Forall (Implies p q) :: Γ)  (q := (subst_bvar_inner 0 t q)) (c := t)) in H0 as H1.  
+  apply (ND_imp_e (p := subst_bvar_inner 0 t p) (q := (subst_bvar_inner 0 t q))) in H as H2.
+  apply (ND_exists_intro (Γ := Exists p :: Forall (Implies p q) :: Γ) (t := t) (p := q)) in H2 as H3.
+  apply (@ND_imp_i2 (Forall (Implies p q) :: Γ)) in H3 as H4.
+  apply ND_imp_i2 in H4 as H5. assumption. assumption. assumption.
+  intros.
+  
+  Check ND_exists_elim_small.
+  
+End ImportantTheorems.
 
 Theorem consistency : not (proves Falsum).
 Proof.
