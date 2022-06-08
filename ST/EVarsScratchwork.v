@@ -950,4 +950,186 @@ Proof.
     reflexivity. apply sorted_cons. assumption. assumption. assumption.
 Qed.
 
+Theorem insert_merge_list_fold_sorted : forall (A : Type) (f : A -> list nat) (l : list A) (init : list nat),
+  sorted init -> sorted (List.fold_left (fun l' => fun (a : A) => insert_merge (f a) l') l init%list).
+Proof.
+  intros. generalize dependent init.
+  induction l.
+  - simpl; auto.
+  - intros.
+    assert((fold_left (fun (l' : list nat) (a0 : A) => insert_merge (f a0) l') (a :: l) init)
+          = (fold_left (fun (l' : list nat) (a0 : A) => insert_merge (f a0) l') l (insert_merge (f a) init))). {
+      simpl; auto.
+    } rewrite H0.
+    assert (sorted (insert_merge (f a) init)). {
+      apply insert_merge_sorted2. assumption.
+    }
+    apply IHl in H1 as IH. apply IH.
+Qed.
+
+Theorem insert_merge_list_fold_sorted2 : forall (A : Type) (f : A -> list nat -> list nat) (l : list A) (init : list nat),
+  sorted init -> sorted (List.fold_left (fun l' => fun (a : A) => insert_merge (f a l') l') l init%list).
+Proof.
+  intros. generalize dependent init.
+  induction l.
+  - simpl; auto.
+  - intros.
+    assert((fold_left (fun (l' : list nat) (a0 : A) => insert_merge (f a0 l') l') (a :: l) init)
+          = (fold_left (fun (l' : list nat) (a0 : A) => insert_merge (f a0 l') l') l (insert_merge (f a init) init))). {
+      simpl; auto.
+    } rewrite H0.
+    assert (sorted (insert_merge (f a init) init)). {
+      apply insert_merge_sorted2. assumption.
+    }
+    apply IHl in H1 as IH. apply IH.
+Qed.
+
+Require Export Coq.Vectors.VectorSpec.
+
+Theorem insert_merge_vector_fold_sorted {n} : forall (A : Type) (f : A -> list nat) (v : Vector.t A n) (init : list nat),
+  sorted init -> sorted (Vector.fold_left (fun l' => fun (a : A) => insert_merge (f a) l') init v).
+Proof.
+  intros.
+  assert(Vector.fold_left (fun l' => fun (a : A) => insert_merge (f a) l') init v
+          = List.fold_left (fun l' => fun (a : A) => insert_merge (f a) l') (Vector.to_list v) init).
+  { apply to_list_fold_left. }
+  rewrite H0.
+  apply insert_merge_list_fold_sorted.
+  assumption.
+Qed.
+
+Theorem insert_merge_vector_fold_sorted2 {n} : forall (A : Type) (f : A -> list nat -> list nat) (v : Vector.t A n) (init : list nat),
+  sorted init -> sorted (Vector.fold_left (fun l' => fun (a : A) => insert_merge (f a l') l') init v).
+Proof.
+  intros.
+  assert(Vector.fold_left (fun l' => fun (a : A) => insert_merge (f a l') l') init v
+          = List.fold_left (fun l' => fun (a : A) => insert_merge (f a l') l') (Vector.to_list v) init).
+  { apply to_list_fold_left. }
+  rewrite H0.
+  apply insert_merge_list_fold_sorted2.
+  assumption.
+Qed.
+  
+
+Require Import Nat.
+Require Import Coq.Arith.PeanoNat.
+  Check Nat.eqb_eq.
+
+Lemma first_new_cons {l n} :
+  first_new n (n :: l) = first_new (S n) l.
+Proof.
+  assert(n = n). reflexivity.
+  apply Nat.eqb_eq in H as H1.
+  simpl; auto. rewrite H1. reflexivity.
+Qed.
+
+Lemma neq_neqb : forall (n k : nat),
+  n <> k <-> Nat.eqb n k = false.
+Proof. intros. revert n.
+  induction k as [|k IHk]; intro n; destruct n; simpl; rewrite ?IHk; split; try easy.
+  - intros. assert (n <> k). red; auto. apply IHk in H0. assumption.
+  - intros. apply IHk in H. red; auto.
+Qed.
+
+Lemma first_new_distinct {l a n} :
+  a <> n -> first_new n (a :: l) = first_new n l.
+Proof. 
+  intros. 
+  apply neq_neqb in H as H1.
+  simpl; auto. rewrite H1. 
+  reflexivity.
+Qed.
+
+Lemma fresh_new_step {l n k} :
+  first_new n l = first_new n (k::l) \/ first_new (S n) l = first_new n (k::l).
+Proof.
+  assert({k = n} + {k <> n}). decide equality. destruct H.
+  - right. rewrite e. symmetry. apply first_new_cons.
+  - left. apply (@first_new_distinct l k n) in n0. symmetry; assumption.
+Qed.
+
+(*
+Lemma first_new_nondecreasing {l n} :
+  n <= first_new n l.
+Proof. generalize dependent n.
+  induction l. 
+  - simpl; auto.
+  - intros. assert ({a = n} + {a <> n}). decide equality.
+    destruct H.
+  -- rewrite e. 
+     assert (first_new n (n :: l) = first_new (S n) l).
+     apply first_new_cons. rewrite H.
+     assert (S n <= first_new (S n) l). apply (@IHl (S n)).
+     intuition.
+  -- assert(first_new n l = first_new n (a :: l)). symmetry. apply (@first_new_distinct l a n).
+     assumption. rewrite <- H.
+     apply IHl.
+Qed.  
+*)
+
+Lemma fresh_succ_nonzero {l n} :
+  0 < first_new (S n) l.
+Proof.
+  intros. generalize dependent n. induction l.
+  - simpl; auto. apply Nat.lt_0_succ.
+  - intros. destruct (@fresh_new_step l (S n) a).
+  + rewrite <- H. apply IHl.
+  + rewrite <- H. apply (IHl (S n)).
+Qed.
+
+(*
+Lemma first_new_cons_inv {l n a} :
+  a = n <-> first_new n (a :: l) = first_new (S n) l.
+Proof.
+  assert ({a = n} + {a <> n}). decide equality. destruct H.
+  - split.
+  -- rewrite e. intros. apply first_new_cons.
+  -- intros; assumption.
+  - split. contradiction. intros. inversion H.
+    assert (Nat.eqb a n  = false). { apply neq_neqb. assumption. }
+    rewrite H0 in H1.
+  split. 
+  - intros. rewrite H. apply first_new_cons.
+  - intros. inversion H.
+  assert(n = n). reflexivity.
+  apply Nat.eqb_eq in H as H1.
+  simpl; auto. rewrite H1. reflexivity.
+Qed.
+*)
+Require Import Coq.Arith.Compare.
+
+Lemma first_new_on_different_args {l m n} :
+  m <= n -> first_new m l <= first_new n l.
+Proof.
+  intros. generalize dependent m. generalize dependent n.
+  induction l.
+  - simpl; auto.
+  - intros.
+    assert ({n = a} + {n <> a}). decide equality. destruct H0.
+  + assert (first_new n (n :: l) = first_new (S n) l). apply first_new_cons.
+    assert ({m = a} + {m <> a}). decide equality. destruct H1.
+  ++ rewrite e0; rewrite <- e. reflexivity.
+  ++ (* m <> a && n = a *)
+    assert (first_new m (a :: l) = first_new m l). {
+    apply (@first_new_distinct l a m); intuition.
+    }
+    rewrite H1. 
+    assert (n <= first_new n (a :: l)). { apply first_new_nondecreasing. }
+    rewrite <- e; rewrite H0. apply IHl. intuition.
+  + (* n <> a *)
+    assert (first_new n (a :: l) = first_new n l). { apply (@first_new_distinct l a n); intuition. }
+    assert ({m = a} + {m <> a}). decide equality. destruct H1.
+  ++ (* n <> a && m = a *)
+     assert (first_new m (a :: l) = first_new (S m) l). {
+       rewrite <- e; apply first_new_cons.
+     }
+     Check le_le_S_eq.
+     assert (S m <= n \/ m = n). { apply le_le_S_eq in H. assumption. }
+     destruct H2.
+ +++ (* S m <= n *)
+     rewrite H0. rewrite H1. apply IHl. intuition.
+ +++ rewrite H2. reflexivity.
+ ++ assert (first_new m (a :: l) = first_new m l). { apply (@first_new_distinct l a m); intuition. }
+    rewrite H1; rewrite H0. apply IHl. assumption.
+Qed.
 
