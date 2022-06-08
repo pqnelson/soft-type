@@ -133,11 +133,11 @@ logic easier later on.
 
 Inductive Term : Type :=
 | Var : V -> Term
-| Fun {n} : name -> Vector.t Term n -> Term
 (*
 | Fun : forall (n : nat), name -> Vector.t Term n -> Term
 *)
-| EConst : nat -> Term.
+| EConst : nat -> Term
+| Fun {n} : name -> Vector.t Term n -> Term.
 
 Definition constant (c : name) : Term :=
 @Fun 0 c [].

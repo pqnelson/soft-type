@@ -763,3 +763,191 @@ Proof.
     rewrite H3.
     apply H1 in H2. assumption.
 Qed.
+
+Theorem insert_merge_sorted2 : forall (l1 l2 : list nat),
+  sorted l2 -> sorted (insert_merge l1 l2).
+Proof.
+  intros. generalize dependent l2.
+  induction l1.
+  - (* Base case: l1 = nil *)
+    intros. unfold insert_merge; auto.
+  - (* Inductive case: l1 = a::l1 *)
+    intros.
+    assert (forall l2 : list nat, sorted l2 -> sorted (insert_merge l1 l2)). {
+      apply IHl1.
+    }
+    assert (sorted (insert a l2)). {
+    apply insert_preserves_sorted. assumption.
+    }
+    assert (insert_merge (a :: l1) l2 = insert_merge l1 (insert a l2)). {
+      unfold insert. simpl; auto.
+    }
+    rewrite H2. apply H0.
+    apply insert_preserves_sorted. assumption.
+Qed.
+
+Theorem insert_merge_idempotent : forall (l1 l2 : list nat),
+  sorted l2 -> incl l1 l2 -> l2 = insert_merge l1 l2.
+Proof.
+  intros.
+  induction l1.
+  - simpl; auto.
+  - apply incl_cons_inv in H0 as H1. destruct H1.
+    assert (insert_merge (a :: l1) l2 = insert_merge l1 (insert a l2)). {
+      simpl; auto.
+    }
+    assert(l2 = insert a l2). { apply insert_existing_sorted. assumption. assumption. }
+    rewrite H3. rewrite <- H4.
+    apply IHl1.
+    assumption.
+Qed.
+
+Hypothesis insert_merge_idem_right : forall l,
+  insert_merge l [] = l.
+
+(** * Fresh Number
+
+The other important function we want to implement concerns,
+given a list [l : list nat], find the first natural number
+*not* in the list.
+*)
+
+Fixpoint first_new (n : nat) (l : list nat) : nat :=
+match l with
+| (h::tl)%list => if Nat.eqb h n then first_new (S n) tl else first_new n tl
+| []%list => n
+end.
+
+Lemma first_new_eq {l n} :
+  first_new n (n::l) = first_new (S n) l.
+Proof.
+  intros.
+  assert (Nat.eqb n n = true). apply Nat.eqb_eq; reflexivity.
+  unfold first_new; rewrite H. reflexivity.
+Qed.
+
+Require Import Coq.Arith.EqNat.
+
+Lemma neq_is_neqb {a b} :
+  a <> b -> Nat.eqb a b = false.
+Admitted.
+
+Lemma first_new_not_eq {l a n} :
+  a <> n -> first_new n (a::l) = first_new n l.
+Proof.
+  intros.
+  assert (Nat.eqb a n = false). apply neq_is_neqb; assumption.
+  unfold first_new. rewrite H0. simpl; auto.
+Qed. 
+
+Require Import Coq.Lists.ListDec.
+
+Theorem first_new_nondecreasing {l n} :
+  n <= first_new n l.
+Proof.
+  generalize dependent n. induction l.
+  - simpl; auto.
+  - intros.
+    assert({a = n} + {a <> n}). decide equality.
+    destruct H.
+    + (* Case: a = n *) rewrite e.
+      assert (first_new n (n::l) = first_new (S n) l). apply first_new_eq.
+      rewrite H.
+      assert (n < S n). lia.
+      assert (S n <= first_new (S n) l). apply IHl.
+      lia.
+    + (* Case: a <> n *)
+      apply (@first_new_not_eq l a n) in n0. rewrite n0.
+      apply IHl.
+Qed. 
+
+Theorem first_new_lt {l x n} :
+  sorted (x :: l) -> n < x -> first_new n (x::l) = n.
+Proof. intros.
+  induction l.
+  - assert (x <> n). lia.
+    apply (@first_new_not_eq [] x n) in H1.
+    rewrite H1. unfold first_new. reflexivity.
+  - assert (sorted (x :: l)). { apply sorted_surgery in H. assumption. }
+    apply IHl in H1 as H2.
+    assert (x <> n). lia.
+    apply (@first_new_not_eq l x n) in H3 as H4.
+    inversion H. clear H5 H8 H6.
+    assert (a <> n). lia.
+    apply (@first_new_not_eq l a n) in H5 as H6.
+    assert (first_new n (x :: a :: l) = first_new n (a :: l)). {
+      apply (@first_new_not_eq (a::l) x n). assumption.
+    }
+    rewrite H8. rewrite H6. rewrite <- H4. assumption.
+Qed.
+
+Lemma first_new_not_in_lt {l l0 a n} :
+  l = a::l0 -> sorted (l) -> n < a -> ~In (first_new n l) l.
+Proof. intros.
+  assert (first_new n (a::l0) = n). {
+    apply (@first_new_lt l0 a n). rewrite <- H. assumption. assumption.
+  }
+  rewrite H. rewrite H2. rewrite <- H. generalize dependent a.
+  generalize dependent l0.
+  induction H0.
+  - intros; apply in_nil.
+  - intros; apply not_in_cons. split. inversion H. lia. apply in_nil.
+  - intros.
+    assert (sorted (x :: y :: l)). { apply (sorted_cons x y l). assumption.
+      assumption.
+    }
+    apply not_in_cons. split.
+    + inversion H1. lia.
+    + apply (IHsorted l y). 
+      reflexivity. inversion H1. lia.
+      apply first_new_lt. assumption. inversion H1. lia.
+Qed.
+
+Lemma first_new_not_in_gt {l x y n} : 
+  forall (IHsorted : forall n : nat, ~ In (first_new n (y :: l)) (y :: l)),
+  sorted (y :: l) -> x < n -> x < y -> ~ In (first_new n (x :: y :: l)) (x :: y :: l).
+Proof.
+  intros.
+  apply not_in_cons. split.
+  - assert(n <= first_new n (x :: y :: l)). { apply first_new_nondecreasing. }
+    lia.
+  - assert(x <> n). lia.
+    apply (@first_new_not_eq (y::l) x n) in H2.
+    rewrite H2. apply IHsorted.
+Qed.
+   
+Theorem first_new_not_in {l n} :
+  sorted l -> ~ In (first_new n l) l.
+Proof.
+  intros. generalize dependent n.
+  induction H.
+  - (* Base case: sorted_nil. *) simpl; auto.
+  - (* Base case: sorted_1. *) intros. assert ({x = n} + {x <> n}). decide equality. destruct H.
+   + (* If x = n *) rewrite e.
+     assert (first_new n [n] = first_new (S n) []). apply first_new_eq.
+     rewrite H. unfold first_new. 
+     apply not_in_cons. simpl; auto.
+   + (* If x <> n *)
+     apply (@first_new_not_eq [] x n) in n0 as H.
+     rewrite H. unfold first_new.
+     apply not_in_cons. simpl; auto.
+  - (* Inductive case (sorted_cons): x < y && sorted (y::l0) && l = x::y::l0 *)
+    intros.
+    assert ({x < n} + {x = n} + {n < x}). apply lt_eq_lt_dec. destruct H1. destruct s.
+ -- (* x < n *)
+    apply (@first_new_not_in_gt l x y n IHsorted). assumption.
+    assert (x <> n). lia. assumption. assumption.
+ -- (* x = n *) rewrite e.
+     assert (first_new n (n :: y :: l) = first_new (S n) (y :: l)). apply first_new_eq.
+     rewrite H1.
+     apply not_in_cons.
+     assert (S n <> n). lia.
+     assert (S n <= first_new (S n) (y :: l)). apply first_new_nondecreasing.
+     split. lia. apply IHsorted.
+ -- (* x > n *)
+    Check @first_new_not_in_lt.
+    apply (@first_new_not_in_lt (x :: y :: l) (y :: l) x n).
+    reflexivity. apply sorted_cons. assumption. assumption. assumption.
+Qed.
+
+

@@ -231,22 +231,23 @@ Lemma Formula_eq_dec : forall a b : Formula, {a = b} + {a <> b}.
 Proof. decide equality. apply predicate_eq_dec. Defined.
 
 Class Fresh A : Type := {
-  fresh : name -> A -> Prop
+  fresh : Term -> A -> Prop
 }.
 
 Check @Vector.Forall.
 
-Fixpoint fresh_term (c : name) (t : Term) : Prop :=
-match t with
-| Var (FVar x) => x <> c
-| Var (BVar _) => True
-| EConst _ => True
-| Fun f args => let fix fresh_args {k} (ars : Vector.t Term k) :=
-                match ars with
-                | tm::ars1 => (fresh_term c tm) /\ fresh_args ars1
-                | [] => True
-                end
-                in fresh_args args
+Fixpoint fresh_term (c : Term) (t : Term) : Prop :=
+match t, c with
+| Var x, Var y => x <> y
+| EConst m, EConst n => m <> n
+| Fun f args1, Fun g args2 => t <> c /\
+  let fix fresh_args {k} (ars : Vector.t Term k) :=
+          match ars with
+          | tm::ars1 => (fresh_term c tm) /\ fresh_args ars1
+          | [] => True
+          end
+  in fresh_args args1
+| _,_ => True
 end.
 
 Global Instance FreshTerm : Fresh Term := {
@@ -254,13 +255,13 @@ Global Instance FreshTerm : Fresh Term := {
 }.
 
 Global Instance FreshPredicate : Fresh Predicate := {
-  fresh (c : name) (p : Predicate) :=
+  fresh (c : Term) (p : Predicate) :=
   match p with
   | P n s args => Vector.Forall (fun (arg : Term) => fresh c arg) args
   end
 }.
 
-Fixpoint fresh_formula (c : name) (p : Formula) : Prop :=
+Fixpoint fresh_formula (c : Term) (p : Formula) : Prop :=
   match p with
   | Falsum => True
   | Atom phi => fresh c phi
@@ -287,8 +288,6 @@ Class EnumerateEVars A := {
   list_evars : A -> list nat
 }.
 
-Check Vector.fold_left.
-
 Fixpoint list_evars_term (t : Term) (l : list nat) : list nat :=
 match t with
 | Var _ => l
@@ -298,14 +297,20 @@ match t with
 end.
 
 Global Instance EnumerateEVarsTerm : EnumerateEVars Term := {
-list_evars tm := list_evars_term tm []
+  list_evars tm := list_evars_term tm []
 }.
+
+Hypothesis list_evers_term_sorted : forall (t : Term),
+  sorted (list_evars t).
 
 Global Instance EnumerateEVarsPredicate : EnumerateEVars Predicate := {
 list_evars p := match p with
 | P n s args => Vector.fold_left (fun l' => fun (arg : Term) => insert_merge l' (list_evars arg)) []%list args
 end
 }.
+
+Hypothesis list_evars_predicate_sorted : forall (p : Predicate),
+  sorted (list_evars p).
 
 Global Instance EnumerateEVarsRadix : EnumerateEVars Radix := {
 list_evars R := match R with
@@ -314,11 +319,17 @@ list_evars R := match R with
 end
 }.
 
+Hypothesis list_evars_radix_sorted : forall (R : Radix),
+  sorted (list_evars R).
+
 Global Instance EnumerateEVarsAttribute : EnumerateEVars Attribute := {
 list_evars attr := match attr with
 | Attr n s args => Vector.fold_left (fun l' => fun (arg : Term) => insert_merge l' (list_evars arg)) []%list args
 end
 }.
+
+Hypothesis list_evars_attribute_sorted : forall (A : Attribute),
+  sorted (list_evars A).
 
 Global Instance EnumerateEVarsAdjective : EnumerateEVars Adjective := {
 list_evars adj := match adj with
@@ -327,6 +338,17 @@ list_evars adj := match adj with
 end
 }.
 
+Theorem list_evars_adjective_sorted : forall (A : Adjective),
+  sorted (list_evars A).
+Proof. intros. destruct A.
+  - assert(list_evars (Pos a) = list_evars a). { simpl; auto. }
+    rewrite H.
+    apply list_evars_attribute_sorted.
+  - assert(list_evars (Neg a) = list_evars a). { simpl; auto. }
+    rewrite H.
+    apply list_evars_attribute_sorted.
+Qed.
+
 Global Instance EnumerateEVarsSoftType : EnumerateEVars SoftType := {
 list_evars T := match T with
 | (adjectives,T) => List.fold_left (fun l' => fun (adj : Adjective) => insert_merge l' (list_evars adj))
@@ -334,6 +356,8 @@ list_evars T := match T with
 end
 }.
 
+Hypothesis list_evars_soft_type_sorted : forall (T : SoftType),
+  sorted (list_evars T).
 
 Global Instance EnumerateEVarsJudgementType : EnumerateEVars JudgementType := {
 list_evars Judg := match Judg with
@@ -345,6 +369,9 @@ list_evars Judg := match Judg with
 end
 }.
 
+Hypothesis list_evars_judgement_type_sorted : forall (j : JudgementType),
+  sorted (list_evars j).
+
 Global Instance EnumerateEVarsLocalContext : EnumerateEVars LocalContext := {
 list_evars lc := List.fold_left (fun l' => fun (d : Decl) => 
   match d with
@@ -352,6 +379,9 @@ list_evars lc := List.fold_left (fun l' => fun (d : Decl) =>
   end)
  lc []%list
 }.
+
+Hypothesis list_evars_local_context_sorted : forall (lc : LocalContext),
+  sorted (list_evars lc).
 
 Global Instance EnumerateEVarsGlobalContext : EnumerateEVars GlobalContext := {
 list_evars gc := List.fold_left (fun l' => fun d => 
@@ -361,11 +391,17 @@ list_evars gc := List.fold_left (fun l' => fun d =>
  gc []%list
 }.
 
+Hypothesis list_evars_global_context_sorted : forall (gc : GlobalContext),
+  sorted (list_evars gc).
+
 Global Instance EnumerateEVarsJudgement : EnumerateEVars Judgement := {
 list_evars j := match j with
 | (gc,lc,judge) => insert_merge (list_evars gc) (insert_merge (list_evars lc) (list_evars judge))
 end
 }.
+
+Hypothesis list_evars_judgement_sorted : forall (j : Judgement),
+  sorted (list_evars j).
 
 Fixpoint list_evars_formula (phi : Formula) : list nat :=
 match phi with
@@ -379,18 +415,28 @@ Global Instance EnumerateEVarsFormula : EnumerateEVars Formula := {
 list_evars := list_evars_formula
 }. 
 
-Fixpoint first_new (n : nat) (l : list nat) : nat :=
-match l with
-| (h::tl)%list => if eqb h n then first_new (S n) tl else n
-| []%list => n
-end.
+Hypothesis list_evars_formula_sorted : forall (phi : Formula),
+  sorted (list_evars phi).
+
+Global Instance EnumerateEVarsFormulaList : EnumerateEVars (list Formula) := {
+list_evars Γ := (List.fold_left (fun l' => fun (phi : Formula) => insert_merge l' (list_evars phi))
+ Γ []%list)
+}. 
+
+Hypothesis list_evars_formula_list_sorted : forall (l : list Formula),
+  sorted (list_evars l).
 
 Definition fresh_evar_counter (Γ : list Formula) (p : Formula) : nat :=
-first_new 0 (List.fold_left (fun l' => fun (phi : Formula) => insert_merge l' (list_evars phi))
- Γ (list_evars p)).
+first_new 0 (list_evars (p::Γ)%list).
 
 Definition fresh_evar (Γ : list Formula) (p : Formula) : Term :=
 EConst (fresh_evar_counter Γ p).
+
+Hypothesis fresh_evar_context : forall (Γ : list Formula) (p : Formula),
+  fresh (fresh_evar Γ p) Γ.
+
+Hypothesis fresh_evar_body : forall (Γ : list Formula) (p : Formula),
+  fresh (fresh_evar Γ p) p.
 
 (** The alternate approach is that fresh existential variables will be [0],
 and when we introduce one, we [shift_evars] in the related formulas. *)
