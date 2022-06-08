@@ -661,6 +661,18 @@ Proof.
   simpl; auto. simpl; auto.
 Qed.
 
+(* Apparently, this was implemented some time between 8.11 and 8.15, so
+if you are using 8.11, uncomment the following:
+
+    Lemma Forall_cons_iff {A} : forall (P : A -> Prop) (a:A) (l : list A), 
+List.Forall P (a :: l) <-> P a /\ List.Forall P l.
+    Proof.
+      intros. now split; [intro H; inversion H|constructor].
+    Qed.
+*)
+
+Check Coq.Lists.List.Forall_cons_iff.
+
 (* Suppose [Subcontext Γ1 Γ2]. If [fresh c Γ2], then [fresh c Γ1]. *)
 Global Instance fresh_cons_proper :
   Proper (eq ++> subcontext --> Basics.impl) fresh.
