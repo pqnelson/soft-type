@@ -538,6 +538,7 @@ first_new 0 (list_evars (p::Γ)%list).
 Definition fresh_evar (Γ : list Formula) (p : Formula) : Term :=
 EConst (fresh_evar_counter Γ p).
 
+(* TODO: these next two results should be proven, but I am lazy. *)
 Hypothesis fresh_evar_context : forall (Γ : list Formula) (p : Formula),
   fresh (fresh_evar Γ p) Γ.
 
@@ -871,6 +872,11 @@ Axiom renaming_econst2 : forall (Γ1 Γ2 : list Formula) (p : Formula) (c : Term
   Γ1 ⊆ Γ2 -> 
   c = (fresh_evar Γ1 p) -> 
   c = (fresh_evar Γ2 p).
+
+(* This should be proven, it is not only obvious, but true. 
+Equally true, I am lazy. *)
+Axiom renaming_econst3 : forall (Γ : list Formula) (p : Formula) (c : Term),
+  c = (fresh_evar Γ p) <-> c = (fresh_evar (p::Γ)%list Falsum).
 
 Lemma subcontext_in_trans {Γ1 Γ2 p} :
   In p Γ1 -> Γ1 ⊆ Γ2 -> In p Γ2.
@@ -1321,6 +1327,73 @@ Proof.
   simpl; auto.
   apply ND_imp_i2; apply ND_assume; prove_In.
 Qed.
+
+Theorem forall_modus_ponens_tautology {Γ p q} :
+  Γ ⊢ Implies (Forall (Implies p q))
+         (Implies (Exists p) (Exists q)).
+Proof.
+  intros.
+  set (c := fresh_evar (Forall (Implies p q) :: Γ) (Exists q)).
+  Assume((subst_bvar_inner 0 c p) ::  Forall (Implies p q) :: Γ ⊢ Forall (Implies p q)).
+  apply (@ND_forall_elim (subst_bvar_inner 0 c p
+     :: Forall (Implies p q) :: Γ) (Implies p q) c) in H as H2.
+     
+  assert (subst_bvar_inner 0 c p
+     :: Forall (Implies p q) :: Γ ⊢ subst_bvar_inner 0 c (Implies p q) 
+  = subst_bvar_inner 0 c p
+     :: Forall (Implies p q) :: Γ ⊢ Implies (subst_bvar_inner 0 c p) (subst_bvar_inner 0 c q)). { simpl; auto. }
+  rewrite H0 in H2. clear H0.
+  apply (ND_imp_e (p := subst_bvar_inner 0 c p) (q := subst_bvar_inner 0 c q)) in H2.
+  2: apply ND_assume; prove_In.
+  apply (@ND_exists_intro (subst_bvar_inner 0 c p
+     :: Forall (Implies p q) :: Γ) q c) in H2.
+  Check (@ND_exists_elim_small Γ p).
+  apply (@ND_exists_elim_small (Forall (Implies p q) :: Γ) p (Exists q) c) in H2 as H3.
+  apply ND_imp_i2 in H3.
+  apply ND_imp_i2 in H3.
+  assumption. auto.
+Qed.
+
+Theorem forall_modus_const_tautology {Γ p q c} :
+  Γ ⊢ Implies (Forall (Implies p q))
+         (Implies (subst_bvar_inner 0 c p) (subst_bvar_inner 0 c q)).
+Proof.
+  intros.
+  Assume((subst_bvar_inner 0 c p) ::  Forall (Implies p q) :: Γ ⊢ Forall (Implies p q)).
+  apply (@ND_forall_elim (subst_bvar_inner 0 c p
+    :: Forall (Implies p q) :: Γ) (Implies p q) c) in H as H1.
+  assert (subst_bvar_inner 0 c p
+     :: Forall (Implies p q) :: Γ ⊢ subst_bvar_inner 0 c (Implies p q) 
+  = subst_bvar_inner 0 c p
+     :: Forall (Implies p q) :: Γ ⊢ Implies (subst_bvar_inner 0 c p) (subst_bvar_inner 0 c q)). { simpl; auto. }
+  rewrite H0 in H1. clear H0.
+  apply (@ND_imp_e (subst_bvar_inner 0 c p :: Forall (Implies p q) :: Γ) (subst_bvar_inner 0 c p) (subst_bvar_inner 0 c q)) in H1 as H2.
+  apply ND_imp_i2 in H2 as H3.
+  apply ND_imp_i2 in H3 as H4.
+  assumption. apply ND_assume; prove_In.
+Qed.
+
+Theorem forall_proj_r {Γ p q} :
+  Γ ⊢ Implies (Forall (And p q)) (Forall q).
+Proof.
+  set (c := fresh_evar (Forall (And p q) :: Γ) Falsum).
+  apply ND_imp_i2.
+  apply (@ND_forall_i (Forall (And p q) :: Γ) q c). 2: auto.
+  Assume (Forall (And p q) :: Γ ⊢ Forall (And p q)).
+  apply (@ND_forall_elim (Forall (And p q) :: Γ) (And p q) c) in H as H1.
+  assert(Forall (And p q) :: Γ ⊢ subst_bvar_inner 0 c (And p q)
+  = Forall (And p q) :: Γ ⊢ And (subst_bvar_inner 0 c p) (subst_bvar_inner 0 c q)). { simpl; auto. }
+  rewrite H0 in H1. clear H0.
+  apply (@ND_proj_r (Forall (And p q) :: Γ) (subst_bvar_inner 0 c p) (subst_bvar_inner 0 c q)) in H1.
+  assumption.
+Qed.
+
+(* TODO: these should be proven *)
+Theorem universal_hypothetical_syllogism {Γ p q r} :
+  Γ ⊢ Implies (Forall (Implies p q))
+        (Implies (Forall (Implies q r)) (Forall (Implies p r))).
+Admitted.
+
 End ImportantTheorems.
 
 Theorem consistency : not (proves Falsum).
