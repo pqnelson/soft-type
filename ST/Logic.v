@@ -1388,11 +1388,59 @@ Proof.
   assumption.
 Qed.
 
-(* TODO: these should be proven *)
+Theorem forall_proj_l {Γ p q} :
+  Γ ⊢ Implies (Forall (And p q)) (Forall p).
+Proof.
+  set (c := fresh_evar (Forall (And p q) :: Γ) Falsum).
+  apply ND_imp_i2.
+  apply (@ND_forall_i (Forall (And p q) :: Γ) p c). 2: auto.
+  Assume (Forall (And p q) :: Γ ⊢ Forall (And p q)).
+  apply (@ND_forall_elim (Forall (And p q) :: Γ) (And p q) c) in H as H1.
+  assert(Forall (And p q) :: Γ ⊢ subst_bvar_inner 0 c (And p q)
+  = Forall (And p q) :: Γ ⊢ And (subst_bvar_inner 0 c p) (subst_bvar_inner 0 c q)). { simpl; auto. }
+  rewrite H0 in H1. clear H0.
+  apply (@ND_proj_l (Forall (And p q) :: Γ) (subst_bvar_inner 0 c p) (subst_bvar_inner 0 c q)) in H1.
+  assumption.
+Qed.
+
 Theorem universal_hypothetical_syllogism {Γ p q r} :
   Γ ⊢ Implies (Forall (Implies p q))
         (Implies (Forall (Implies q r)) (Forall (Implies p r))).
-Admitted.
+Proof.
+  intros.
+  apply ND_imp_i2; apply ND_imp_i2.
+  set (t := fresh_evar (Forall (Implies q r) :: Forall (Implies p q) :: Γ) Falsum).
+  Assume ((subst_bvar_inner 0 t p) :: Forall (Implies q r) :: Forall (Implies p q) :: Γ ⊢ Forall (Implies p q)).
+  Assume ((subst_bvar_inner 0 t p) :: Forall (Implies q r) :: Forall (Implies p q) :: Γ ⊢ Forall (Implies q r)).
+  apply (@ND_forall_elim ((subst_bvar_inner 0 t p) :: Forall (Implies q r) :: Forall (Implies p q) :: Γ )
+          (Implies p q) t) in H as H1.
+  apply (@ND_forall_elim ((subst_bvar_inner 0 t p) :: Forall (Implies q r) :: Forall (Implies p q) :: Γ )
+          (Implies q r) t) in H0 as H2.
+  assert ((subst_bvar_inner 0 t p) :: Forall (Implies q r) :: Forall (Implies p q) :: Γ
+     ⊢ subst_bvar_inner 0 t (Implies p q) = (subst_bvar_inner 0 t p) :: Forall (Implies q r) :: Forall (Implies p q) :: Γ
+     ⊢  Implies (subst_bvar_inner 0 t p) (subst_bvar_inner 0 t q)). { simpl; auto. }
+  assert ((subst_bvar_inner 0 t p) :: Forall (Implies q r) :: Forall (Implies p q) :: Γ
+     ⊢ subst_bvar_inner 0 t (Implies q r) = (subst_bvar_inner 0 t p) :: Forall (Implies q r) :: Forall (Implies p q) :: Γ
+     ⊢  Implies (subst_bvar_inner 0 t q) (subst_bvar_inner 0 t r)). { simpl; auto. }
+  rewrite H3 in H1. rewrite H4 in H2.
+  Assume ((subst_bvar_inner 0 t p) :: Forall (Implies q r) :: Forall (Implies p q) :: Γ ⊢ (subst_bvar_inner 0 t p)).
+  apply (@ND_imp_e (subst_bvar_inner 0 t p
+     :: Forall (Implies q r) :: Forall (Implies p q) :: Γ) (subst_bvar_inner 0 t p)) in H1.
+  2: assumption.
+  apply (@ND_imp_e (subst_bvar_inner 0 t p
+     :: Forall (Implies q r) :: Forall (Implies p q) :: Γ) (subst_bvar_inner 0 t q)) in H2.
+  2: assumption.
+  apply ND_imp_i2 in H2.
+  assert (Forall (Implies q r)
+     :: Forall (Implies p q) :: Γ
+     ⊢ Implies (subst_bvar_inner 0 t p)
+         (subst_bvar_inner 0 t r) = Forall (Implies q r)
+     :: Forall (Implies p q) :: Γ
+     ⊢ (subst_bvar_inner 0 t (Implies  p r))). { simpl; auto. }
+  rewrite H6 in H2.
+  apply (@ND_forall_i (Forall (Implies q r) :: Forall (Implies p q) :: Γ) (Implies p r) t) in H2.
+  assumption. auto.
+Qed.
 
 End ImportantTheorems.
 
