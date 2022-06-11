@@ -1,16 +1,19 @@
 Require Import String.
 Require Import List.
 Require Import Nat.
-Require Import Coq.Vectors.Vector.
+Require Import Lia.
 Require Export Coq.Arith.Compare_dec.
-Require Export List.
+Require Import Coq.Arith.Peano_dec.
+Require Import Coq.Logic.Eqdep_dec.
+Require Import Coq.Logic.Classical_Prop.
+Require Import Coq.Vectors.Vector.
 Require Export RelationClasses.
 Require Export Morphisms.
 Import ListNotations.
 Open Scope string_scope.
 From ST Require Export SoftType.
-Import VectorNotations.
 From ST Require Import EVarsScratchwork.
+Import VectorNotations.
 (** * Natural Deduction
 
 We need to formalize the proof calculus to then prove the correctness of soft 
@@ -22,6 +25,30 @@ References relevant:
 - https://hal.archives-ouvertes.fr/hal-03096253
 *)
 
+
+Class Ground A : Type := {
+  is_ground : A -> Prop
+}.
+
+Fixpoint is_ground_term (t : Term) :=
+match t with
+| Var x => match x with
+           | FVar _ => True
+           | _ => False
+           end
+| EConst _ => False
+| Fun f args => let fix are_args_ground {k} (ars : Vector.t Term k) :=
+                    match ars with
+                    | [] => True
+                    | a::tl => is_ground_term a /\ are_args_ground tl
+                    end
+                in are_args_ground args
+end.
+
+Global Instance GroundTerm : Ground Term := {
+  is_ground := is_ground_term
+}.
+
 (** ** Predicates
 
 We encode the syntax of a predicate, analogous to [Term], as its arity 
@@ -29,6 +56,12 @@ We encode the syntax of a predicate, analogous to [Term], as its arity
 *)
 Inductive Predicate : Type := 
 | P : forall (n : nat), name -> Vector.t Term n -> Predicate.
+
+Global Instance GroundPredicate : Ground Predicate := {
+  is_ground (p : Predicate) := match p with
+  | P n s args => Vector.Forall is_ground args
+  end
+}.
 
 Global Instance substPred : Subst Predicate :=
 {
@@ -80,6 +113,20 @@ Inductive Formula : Type :=
 Definition Not (p : Formula) := Implies p Falsum.
 Definition Verum : Formula := Implies Falsum Falsum.
 Definition Forall (p : Formula) := Not (Exists (Not p)).
+
+Fixpoint is_ground_formula (phi : Formula) :=
+match phi with
+| Falsum => True
+| Atom p => is_ground p
+| And f1 f2 | Or f1 f2 | Implies f1 f2 => (is_ground_formula f1) /\ (is_ground_formula f2)
+| Exists f => is_ground_formula f
+end.
+
+Global Instance GroundFormula : Ground Formula := {
+  is_ground := is_ground_formula
+}.
+
+Definition is_sentence (A : Formula) := is_ground_formula A.
 
 (** We can recursively test if two [Formula] objects are identical. This is an
 equality at the level of syntax. *)
@@ -235,7 +282,6 @@ Class Fresh A : Type := {
 }.
 
 Section FreshTermDefinition.
-(* Require Import Coq.Vectors.VectorEq. *)
 
 Fixpoint fresh_term (c : Term) (t : Term) : Prop :=
 match t, c with
@@ -310,7 +356,7 @@ Proof.
   - rename t into args.
     assert (list_evars_term (Fun n0 args) l = Vector.fold_left (fun l' => fun (arg : Term) => insert_merge (list_evars_term arg l') l')
     l args). { simpl; auto. }
-    rewrite H0. apply insert_merge_vector_fold_sorted2.
+    rewrite H1. apply insert_merge_vector_fold_sorted2.
     assumption.
 Qed.
 
@@ -586,9 +632,13 @@ Global Instance ShiftEvarsListFormula : ShiftEvars (list Formula) := {
   shift_evars Γ := List.map shift_evars Γ
 }.
 
+(** Note: I think we need to modify our rules of inference so that modus ponens
+has the side condition that in [Implies p q] either [p] is a sentence (i.e.,
+a ground term) or [q] is not a sentence. Johnstone's notes on logic alerted me
+to this, and the more I think about it, the more I believe he is correct. *)
+
 Import ListNotations.
 Reserved Notation "Γ ⊢ P" (no associativity, at level 61).
-
 Inductive deducible : list Formula -> Formula -> Prop :=
 | ND_exfalso_quodlibet {Γ p} :
   Γ ⊢ Falsum ->
@@ -686,6 +736,9 @@ I am being a bit cavalier here, but the only way to [prove Falsum]
 is to assume contradictory premises. I can't seem to get Coq to believe
 me about this, so I carved out [ND_assume] as an explicit axiom.
 Otherwise the [consistency] theorem below fails.
+
+After further thought, I believe we may need to require [p] be a sentence;
+see the remarks about modus ponens above.
 *)
 Axiom ND_assume_axiom : forall (Γ : list Formula) (p : Formula),
   List.In p Γ ->  Γ ⊢ p.
@@ -1443,6 +1496,402 @@ Proof.
 Qed.
 
 End ImportantTheorems.
+
+Section QuantifierTheorems.
+Theorem not_Forall {Γ p} :
+  Γ ⊢ Implies (Not (Forall p)) (Exists (Not p)).
+Proof.
+  intros.
+  apply ND_imp_i2.
+  assert (Not (Forall p) :: Γ ⊢ Exists (Not p)). {
+    Assume (Not (Forall p) :: Γ ⊢ Not (Forall p)).
+    unfold Forall; simpl; auto.
+    unfold Forall in H; simpl in H; auto.
+    assert (Not (Not (Exists (Not p))) :: Γ
+    ⊢ Implies (Not (Not (Exists (Not p)))) (Exists (Not p))). { apply ND_double_negation. }
+    apply (@ND_imp_e (Not (Not (Exists (Not p))) :: Γ) (Not (Not (Exists (Not p))))) in H0.
+    assumption. assumption.
+  }
+  assumption.
+Qed.
+
+Lemma exists_not_not {Γ p} :
+  Γ ⊢ Implies (Exists (Not (Not p))) (Exists p).
+Proof.
+  intros. apply ND_imp_i2.
+  set (c := fresh_evar Γ (Exists p)).
+  apply (ND_exists_elim_small (c := c) (p := Not (Not p)) (q := Exists p)). 
+  2: unfold c; reflexivity.
+  assert (subst_bvar_inner 0 c (Not (Not p)) = Not (Not (subst_bvar_inner 0 c p))). {
+    simpl; auto.
+  }
+  rewrite H.
+  Assume (Not (Not (subst_bvar_inner 0 c p)) :: Γ ⊢ Not (Not (subst_bvar_inner 0 c p))).
+  assert (Not (Not (subst_bvar_inner 0 c p)) :: Γ
+            ⊢ Implies (Not (Not (subst_bvar_inner 0 c p)))
+                    (subst_bvar_inner 0 c p)). {
+    apply (@ND_double_negation (Not (Not (subst_bvar_inner 0 c p))::Γ) (subst_bvar_inner 0 c p)).
+  }
+  apply (@ND_imp_e (Not (Not (subst_bvar_inner 0 c p))::Γ) (Not (Not (subst_bvar_inner 0 c p)))) in H1 as H2.
+  2: assumption.
+  apply ND_exists_intro in H2. assumption.
+Qed.
+
+Theorem not_Exists {Γ p} :
+  Γ ⊢ Implies (Not (Exists p)) (Forall (Not p)).
+Proof.
+  Check @contrapositive.
+  apply ND_imp_i2.
+  assert (Not (Exists p) :: Γ ⊢ Forall (Not p)). {
+    Assume (Not (Exists p) :: Γ ⊢ Not (Exists p)).
+    unfold Forall; simpl; auto. Check @contrapositive.
+    assert (Not (Exists p) :: Γ
+       ⊢ Implies (Implies (Exists (Not (Not p))) (Exists p))
+           (Implies (Not (Exists p)) (Not (Exists (Not (Not p)))))). { 
+      assert (Not (Exists p) :: Γ ⊢ Implies (Exists (Not (Not p))) (Exists p)). {
+        apply exists_not_not.
+      }
+      apply contrapositive. 
+    }
+    assert (Not (Exists p) :: Γ ⊢ Implies (Exists (Not (Not p))) (Exists p)). {
+      apply exists_not_not.
+    }
+    apply (@ND_imp_e (Not (Exists p) :: Γ) (Implies (Exists (Not (Not p))) (Exists p))) in H0.
+    2: assumption.
+    apply (@ND_imp_e (Not (Exists p) :: Γ) (Not (Exists p))) in H0.
+    2: assumption.
+    assumption.
+  }
+  assumption.
+Qed.
+
+Lemma exists_not_not_exists {Γ p} :
+  Γ ⊢ Implies (Exists (Not (Not p))) (Exists p).
+Proof.
+  intros.
+  apply ND_imp_i2.
+  set (t := fresh_evar Γ (Exists p)).
+  Check @ND_exists_elim_small.
+  apply (ND_exists_elim_small (Γ := Γ) (p := (Not (Not p))) (c := t)).
+  2: unfold t; reflexivity.
+  assert (subst_bvar_inner 0 t (Not (Not p)) = Not (Not (subst_bvar_inner 0 t p))). { simpl; auto. }
+  rewrite H.
+  Assume(Not (Not (subst_bvar_inner 0 t p)) :: Γ ⊢ Not (Not (subst_bvar_inner 0 t p))).
+  Check @ND_double_negation.
+  assert (Not (Not (subst_bvar_inner 0 t p)) :: Γ
+     ⊢ Implies (Not (Not (subst_bvar_inner 0 t p))) (subst_bvar_inner 0 t p)). {
+    apply ND_double_negation.
+  }
+  apply (ND_imp_e (q := subst_bvar_inner 0 t p)) in H0. 2: assumption.
+  apply ND_exists_intro in H0.
+  assumption.
+Qed.
+
+Theorem forall_subst : forall (n : nat) (t : Term) (p : Formula),
+  subst_bvar_inner n t (Forall p) = Forall (subst_bvar_inner (S n) (lift (S n) 1 t) p).
+Proof.
+  intros.
+  unfold Forall; unfold subst_bvar_inner; simpl; auto.
+Qed.
+End QuantifierTheorems.
+
+Section VariadicQuantifiers.
+Fixpoint Every (n : nat) (p : Formula) : Formula :=
+match n with
+| 0 => p
+| (S n') => Forall (Every n' p)
+end.
+
+Fixpoint Some (n : nat) (p : Formula) : Formula :=
+match n with
+| 0 => p
+| S n' => Exists (Some n' p)
+end.  
+
+Theorem every_comp :
+  forall (m n : nat) (p : Formula),
+  Every m (Every n p) = Every (m + n) p.
+Proof.
+  intros.
+  induction m.
+  - intros. simpl; auto.
+  - intros.
+    assert (Every m (Every n p) = Every (m + n) p). { apply (IHm). }
+    assert (Forall (Every m (Every n p)) = Every (S m) (Every n p)). {
+      simpl; auto.
+    }
+    rewrite <- H0. rewrite H. simpl; auto.
+Qed.
+
+Corollary every_ind :
+  forall (n : nat) (p : Formula),
+  Every n (Forall p) = Every (S n) p.
+Proof. intros.
+  assert (Every n (Every 1 p) = Every (n + 1) p). {
+    apply (every_comp n 1 p).
+  }
+  assert (S n = 1 + n). lia.
+  rewrite H0.
+  assert(Every n (Every 1 p) = Every n (Forall p)). simpl; auto.
+  rewrite <- H1. assert (n + 1 = 1 + n). lia.
+  rewrite <- H2.
+  assumption.
+Qed.
+
+Theorem some_comp :
+  forall (m n : nat) (p : Formula),
+  Some m (Some n p) = Some (m + n) p.
+Proof.
+  intros.
+  induction m.
+  - intros. simpl; auto.
+  - intros.
+    assert (Some m (Some n p) = Some (m + n) p). { apply IHm. }
+    assert (Exists (Some m (Some n p)) = Some (S m) (Some n p)). {
+      simpl; auto.
+    }
+    rewrite <- H0. rewrite H. simpl; auto.
+Qed.
+
+Corollary some_ind :
+  forall (n : nat) (p : Formula),
+  Some n (Exists p) = Some (S n) p.
+Proof. intros.
+  assert (Some n (Some 1 p) = Some (n + 1) p). {
+    apply (some_comp n 1 p).
+  }
+  assert (S n = 1 + n). lia.
+  rewrite H0.
+  assert(Some n (Some 1 p) = Some n (Exists p)). simpl; auto.
+  rewrite <- H1. assert (n + 1 = 1 + n). lia.
+  rewrite <- H2.
+  assumption.
+Qed.
+Print subst_bvar_inner.
+
+
+Lemma nor_not_and : forall (A B : Prop),
+  ~A /\ ~B <-> ~(A \/ B).
+Proof.
+  intros. split.
+  - apply and_not_or.
+  - apply not_or_and.
+Qed.
+Section Vector.
+Hint Constructors Vector.Exists : core.
+Lemma Vector_Exists_cons {A} (P : A -> Prop) (x : A) {n} (l : Vector.t A n):
+      Vector.Exists P (x::l)%vector <-> P x \/ Vector.Exists P l.
+Proof.
+  split.
+  - intros. inversion H. apply inj_pair2_eq_dec in H3. left; assumption.
+    decide equality. apply inj_pair2_eq_dec in H3. 2: decide equality. right. rewrite H3 in H2. assumption.
+  - intros. destruct H. auto. auto.
+Qed.
+
+Lemma Vector_Exists_nil {A} (P : A -> Prop): Vector.Exists P []%vector <-> False.
+Proof. split; inversion 1. Qed.
+
+Lemma Vector_Forall_cons_iff  {A} (P : A -> Prop) : 
+  forall (a:A) {n} (l : Vector.t A n), Vector.Forall P (a :: l)%vector <-> P a /\ Vector.Forall P l.
+Proof.
+intros. split. 
+- intro H; inversion H.
+  apply inj_pair2_eq_dec in H2. 2: decide equality. rewrite H2 in H4. split.
+  apply H3. apply H4.
+- constructor. destruct H. apply H.  destruct H. apply H0.
+Qed.
+
+Lemma vector_de_morgan {A : Type} {n} : forall  (P : A -> Prop) (l : Vector.t A n),
+  ~(Vector.Exists P l) <-> Vector.Forall (fun a => ~(P a)) l.
+Proof.
+  intros; split.
+  - intros. simpl; auto. induction l. apply Vector.Forall_nil.
+    assert (Vector.Exists P0 (h :: l)%vector <-> P0 h \/ Vector.Exists P0 l). { apply Vector_Exists_cons. }
+    rewrite H0 in H.
+    apply Decidable.not_or in H.
+    apply Vector_Forall_cons_iff. split. destruct H. assumption.
+    destruct H. apply IHl in H1. assumption.
+  - intros. induction l.
+  + assert (Vector.Exists P0 []%vector <-> False). { apply Vector_Exists_nil. } rewrite H0. simpl; auto.
+  + assert (Vector.Exists P0 (h :: l)%vector <-> P0 h \/ Vector.Exists P0 l). { apply Vector_Exists_cons. }
+    rewrite H0.
+    set (notP0 := (fun (a : A) => ~ P0 a)).
+    apply (Vector_Forall_cons_iff) in H. destruct H. apply IHl in H1 as IH.
+    apply and_not_or. split. assumption. assumption.
+Qed.
+End Vector.
+
+(** Substitution in Predicates and Formulas. *)
+Global Instance ContainsBVarPredicate : ContainsBVar Predicate := {
+  contains_bvar (index : nat) (p : Predicate) :=
+  match p with
+  | P n nm args => Vector.Exists (fun (arg : Term) => contains_bvar index arg)
+                   args
+  end
+}.
+
+Fixpoint formula_contains_bvar (index : nat) (A : Formula) : Prop :=
+match A with
+  | Falsum => False
+  | Atom pred => contains_bvar index pred
+  | And fm1 fm2 | Or fm1 fm2 | Implies fm1 fm2 => (formula_contains_bvar index fm1) \/ (formula_contains_bvar index fm2)
+  | Exists fm => (formula_contains_bvar (S index) fm)
+end.
+
+Global Instance ContainsBVarFormula : ContainsBVar Formula := {
+  contains_bvar := formula_contains_bvar
+}.
+
+
+Lemma list_de_morgan {A : Type} : forall  (P : A -> Prop) (l : list A),
+  ~(List.Exists P l) <-> List.Forall (fun a => ~(P a)) l.
+Proof.
+  intros; split.
+  - intros. simpl; auto. induction l. simpl; auto.
+    assert (List.Exists P0 (a :: l) <-> P0 a \/ List.Exists P0 l). { apply List.Exists_cons. }
+    rewrite H0 in H.
+    apply Decidable.not_or in H.
+    apply List.Forall_cons_iff. split. destruct H. assumption.
+    destruct H. apply IHl in H1. assumption.
+  - intros. induction l.
+  + assert (List.Exists P0 [] <-> False). { apply List.Exists_nil. } rewrite H0. simpl; auto.
+  + assert (List.Exists P0 (a :: l) <-> P0 a \/ List.Exists P0 l). { apply List.Exists_cons. }
+    rewrite H0.
+    Check List.Forall_cons.
+    Check ((fun (a : A) => ~ P0 a)).
+    set (notP0 := (fun (a : A) => ~ P0 a)).
+    apply (List.Forall_cons_iff) in H. destruct H. apply IHl in H1 as IH.
+    apply and_not_or. split. assumption. assumption.
+Qed.
+
+
+Lemma formula_predicate_contains_bvar : forall (n : nat) (p : Predicate),
+  contains_bvar n (Atom p) <-> contains_bvar n p.
+Proof.
+  intros; split.
+  - intros. unfold contains_bvar; assumption.
+  - intros. unfold contains_bvar; assumption.
+Qed.
+
+Lemma predicate_subst_bvar_free : forall (n : nat) (p : Predicate) (t : Term),
+  ~(contains_bvar n p) -> (subst (BVar n) t p) = p.
+Proof.
+  intros. destruct p as [k nm args]. unfold subst; unfold substPred.
+  unfold subst; unfold substTerm.
+  unfold contains_bvar in H; unfold ContainsBVarPredicate in H.
+  apply vector_de_morgan in H.
+  induction args.
+  - simpl; auto.
+  - apply Vector_Forall_cons_iff in H as H1. destruct H1.
+    apply IHargs in H1 as IH.
+    assert ((Vector.map
+          (fun arg : Term => tsubst (BVar n) t arg)
+          args) = args). {
+      inversion IH. apply inj_pair2_eq_dec in H3. 2: decide equality.
+      rewrite H3. assumption.
+    }
+    assert ((Vector.map (fun arg : Term => tsubst (BVar n) t arg) (h :: args)%vector) 
+            = ((tsubst (BVar n) t h)::(Vector.map (fun arg : Term => tsubst (BVar n) t arg) args))%vector). {
+      simpl; auto.
+    }
+    rewrite H3. rewrite H2.
+    assert ((tsubst (BVar n) t h) = h). {
+      set (P := (fun a : Term => ~ contains_bvar n a)). fold P in H.
+      set (v := (h :: args)%vector). fold v in H.
+      assert (forall a : Term, VectorDef.In a v -> P a). {
+        apply (Vector.Forall_forall). assumption.
+      }
+      assert (Vector.In h v). {
+        apply Vector.In_cons_hd.
+      }
+      apply H4 in H5. unfold P in H5.
+      apply term_subst_bvar_free. assumption.
+    }
+    rewrite H4. reflexivity.
+Qed.
+
+Lemma formula_and_not_contains_bvar : forall (n : nat) (A1 A2 : Formula),
+  ~(contains_bvar n (And A1 A2)) -> ~contains_bvar n A1 /\ ~contains_bvar n A2.
+Proof.
+  intros.
+  assert (contains_bvar n (And A1 A2) <-> contains_bvar n A1 \/ contains_bvar n A2). {
+    simpl; auto. intuition.
+  }
+  rewrite H0 in H.
+  apply not_or_and. assumption. 
+Qed.
+
+Theorem subst_bvar_free : forall (n : nat) (A : Formula) (t : Term),
+  ~(contains_bvar n A) -> (subst_bvar_inner n t A) = A.
+Proof.
+  intros. generalize dependent n. generalize dependent t. induction A.
+  - simpl; auto.
+  - intros. apply predicate_subst_bvar_free with (t := t) in H as H1. 
+    unfold subst_bvar_inner. rewrite H1. reflexivity.
+  - intros. assert (~contains_bvar n A1 /\ ~contains_bvar n A2). { 
+      assert (contains_bvar n (And A1 A2) <-> contains_bvar n A1 \/ contains_bvar n A2). {
+        simpl; auto. intuition.
+      }
+      rewrite H0 in H.
+      apply not_or_and. assumption. 
+    } destruct H0.
+    apply (IHA1 t n) in H0; apply (IHA2 t n) in H1.
+    assert (subst_bvar_inner n t (And A1 A2) = And (subst_bvar_inner n t A1) (subst_bvar_inner n t A2)). {
+      simpl; auto.
+    }
+    rewrite H2. rewrite H0; rewrite H1; reflexivity.
+  - intros. assert (~contains_bvar n A1 /\ ~contains_bvar n A2). { 
+      assert (contains_bvar n (And A1 A2) <-> contains_bvar n A1 \/ contains_bvar n A2). {
+        simpl; auto. intuition.
+      }
+      rewrite H0 in H.
+      apply not_or_and. assumption. 
+    } destruct H0.
+    apply (IHA1 t n) in H0; apply (IHA2 t n) in H1.
+    assert (subst_bvar_inner n t (Or A1 A2) = Or (subst_bvar_inner n t A1) (subst_bvar_inner n t A2)). {
+      simpl; auto.
+    }
+    rewrite H2. rewrite H0; rewrite H1; reflexivity.
+  - intros. assert (~contains_bvar n A1 /\ ~contains_bvar n A2). { 
+      assert (contains_bvar n (And A1 A2) <-> contains_bvar n A1 \/ contains_bvar n A2). {
+        simpl; auto. intuition.
+      }
+      rewrite H0 in H.
+      apply not_or_and. assumption. 
+    } destruct H0.
+    apply (IHA1 t n) in H0; apply (IHA2 t n) in H1.
+    assert (subst_bvar_inner n t (Implies A1 A2) = Implies (subst_bvar_inner n t A1) (subst_bvar_inner n t A2)). {
+      simpl; auto.
+    }
+    rewrite H2. rewrite H0; rewrite H1; reflexivity.
+  - intros. assert (~contains_bvar (S n) A). {
+      unfold contains_bvar in H. unfold ContainsBVarFormula in H. simpl; auto.
+    }
+    assert (subst_bvar_inner n t (Exists A) = Exists (subst_bvar_inner (S n) (lift (S n) 1 t) A)). {
+      unfold contains_bvar; unfold ContainsBVarFormula; simpl; auto.
+    }
+    apply (IHA (lift (S n) 1 t) (S n)) in H0 as H2. rewrite H1; rewrite H2.
+    reflexivity.
+Qed.
+
+Lemma forall_implies_verum_step {Γ} :
+  forall (p : Formula),
+  Γ ⊢ Implies (Forall p) Verum -> Γ ⊢ Forall (Implies p Verum).
+Proof.
+  intros.
+  set (t := fresh_evar Γ Falsum).
+  apply (@ND_forall_i Γ (Implies p Verum) t).
+  2: unfold t; reflexivity.
+  assert (Γ ⊢ subst_bvar_inner 0 t (Implies p Verum)
+          = Γ ⊢ Implies (subst_bvar_inner 0 t p) Verum). {
+    simpl; auto.
+  }
+  rewrite H0.
+  apply ND_imp_i2.
+  apply ND_True_intro.
+Qed.
+
+End VariadicQuantifiers.
 
 Theorem consistency : not (proves Falsum).
 Proof.
