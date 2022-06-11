@@ -6,6 +6,9 @@ Require Export Coq.Arith.Compare_dec.
 Require Export List.
 Require Export RelationClasses.
 Require Export Morphisms.
+Require Import Coq.Arith.PeanoNat.
+Require Import Coq.Logic.FunctionalExtensionality.
+Require Import Lia.
 Import ListNotations.
 Import VectorNotations.
 Open Scope string_scope.
@@ -67,7 +70,6 @@ Global Instance VEq : Eq V := {
   end
 }.
 
-Require Import Coq.Arith.PeanoNat.
 
 Lemma V_eq_dec : forall a b : V, {a = b} + {a <> b}.
 Proof. decide equality.
@@ -94,10 +96,26 @@ Global Instance VLift : Lift V := {
   end
 }.
 
-(** Lemma: [lift 0 0] is the identity transformation. *)
-Lemma zero_lift_is_id : forall (n : nat), lift 0 0 (BVar n) = (BVar n).
+(** Lemma: [lift 0 0] is the identity transformation.
+Lemma zero_lift_is_id0 : forall (n : nat), lift 0 0 (BVar n) = (BVar n).
 Proof.
   intros. simpl. auto.
+Qed.
+Lemma zero_lift_is_id : forall (x : V), lift 0 0 x = x.
+Proof.
+  intros. destruct x.
+  - simpl; auto.
+  - simpl; auto.
+Qed.
+ *)
+
+
+Lemma zero_lift_is_id :  lift 0 0 = id.
+Proof.
+  apply functional_extensionality.
+  intros. destruct x.
+  - simpl; auto.
+  - simpl; auto. assert (n + 0 = n). { lia. } rewrite H. unfold id. reflexivity.
 Qed.
 
 Theorem case_lift_is_not_id : forall (i k n : nat), k <= n -> lift k i (BVar n) = BVar (n+i).
@@ -131,13 +149,31 @@ functions. We do carve out [EConst] for existential constants, to make
 logic easier later on.
 *)
 
+Unset Elimination Schemes.
+
 Inductive Term : Type :=
 | Var : V -> Term
-(*
-| Fun : forall (n : nat), name -> Vector.t Term n -> Term
-*)
 | EConst : nat -> Term
-| Fun {n} : name -> Vector.t Term n -> Term.
+| Fun {n : nat} : name -> Vector.t Term n -> Term.
+
+Definition Term_ind (P : Term -> Prop)
+       (HVar : forall v : V, P (Var v))
+       (HConst : forall n : nat, P (EConst n))
+       (HFun : forall (n : nat) (n0 : name) (t : t Term n),
+         Vector.Forall P t -> P (Fun n0 t))
+       (* ^ extra hypothesis *)
+  : forall t : Term, P t.
+Proof.
+  fix SELF 1; intros [ | | n m t].
+  - apply HVar.
+  - apply HConst.
+  - apply HFun.
+    induction t as [ | ? ? ? IH ]; constructor.
+    + apply SELF.
+    + apply IH.
+Qed.
+
+Set Elimination Schemes.
 
 Definition constant (c : name) : Term :=
 @Fun 0 c [].
@@ -225,17 +261,106 @@ Proof.
   trivial.
 Qed.
 
+Fixpoint term_map_var (f : V -> V) (t : Term) : Term :=
+match t with
+| Var x => Var (f x)
+| EConst _ => t
+| Fun nm args => Fun nm (Vector.map (fun (a : Term) => term_map_var f a) args)
+end.
+
+Require Import Coq.Logic.Eqdep_dec.
+Require Import Coq.Arith.Peano_dec.
+Require Import Program.
+
+Check Term_ind.
+
+
+Lemma term_map_var_id : forall (t : Term),
+  term_map_var id t = t.
+Proof. intros. induction t.
+ (* apply Term_ind_mut.  dependent inversion t.  (fun (args : TermArgs) => (List.map (term_m.  *)
+  - simpl; auto.
+  - simpl; auto.
+  - rename t into args. 
+    assert(forall (t : Term), Vector.In t args -> ((fun t : Term => term_map_var id t = t) t)). {
+      apply Vector.Forall_forall. assumption.
+    }
+    assert (term_map_var id (Fun n0 args) = Fun n0 (Vector.map (fun (a : Term) => term_map_var id a) args)). {
+      unfold term_map_var; simpl; auto.
+    } rewrite H1.
+    simpl in H0.
+    assert (Vector.map (fun a : Term => term_map_var id a) args = args) as IH. {
+      induction args.
+      simpl; auto.
+      assert (Vector.map (fun a : Term => term_map_var id a) (h :: args)
+               = (term_map_var id h)::(Vector.map (fun a : Term => term_map_var id a) args)). {
+        unfold Vector.map; simpl; auto.
+      }
+      rewrite H2.
+      assert (term_map_var id h = h). {
+        apply H0. apply In_cons_hd.
+      }
+      rewrite H3.
+      assert (Vector.map (fun a : Term => term_map_var id a) args = args). { 
+        apply IHargs. simpl; auto. inversion H.
+        - apply Vector.Forall_forall.
+          assert (forall a : Term, VectorDef.In a args -> VectorDef.In a (h :: args)). {
+            intros. apply In_cons_tl. assumption.
+          }
+          intros.
+          simpl; auto.
+        - intros. assert (Vector.In t (h :: args)). apply In_cons_tl. assumption.
+          apply H0 in H5. assumption.
+        - simpl; auto.
+      }
+      rewrite H4. reflexivity.
+    }
+    rewrite IH. reflexivity.
+Qed.
+
+Definition tlift (c d : nat) (t : Term) := term_map_var (lift c d) t.
+
+(*
 Fixpoint tlift (c d : nat) (t : Term) : Term :=
 match t with
 | Var y => Var (lift c d y)
 | Fun f args => Fun f (Vector.map (fun (a : Term) => tlift c d a) args)
 | EConst _ => t
 end.
+*)
 
 Global Instance liftTerm : Lift Term :=
 {
-  lift := tlift
+  lift (c d : nat) (t : Term) := term_map_var (lift c d) t
 }.
+
+(** Lemma: [lift 0 0] is the identity transformation. *)
+Lemma term_zero_lift_is_id : forall (t : Term), lift 0 0 t = id t.
+Proof.
+  intros. induction t.
+  - assert (@lift V VLift 0 0 = id). apply zero_lift_is_id.
+    unfold lift; unfold liftTerm. rewrite H. 
+    assert (id (Var v) = Var v). { unfold id; simpl; auto. }
+    assert (@lift V VLift 0 0 v = id v). {
+      apply equal_f. trivial.
+    }
+    unfold term_map_var. unfold id. reflexivity.
+  - unfold lift; unfold term_map_var; simpl; auto.
+  - rename t into args. Check Vector.Forall_forall.
+    set (P := (fun t : Term => lift 0 0 t = id t)). fold P in H.
+    Check (Vector.Forall_forall Term P n args).
+    assert (forall a : Term, VectorDef.In a args -> P a). {
+      apply (Vector.Forall_forall Term P n args). assumption.
+    }
+    
+    assert (lift 0 0 (Fun n0 args) = Fun n0 (Vector.map (fun a : Term => term_map_var (lift 0 0) a) args)). {
+      unfold lift; unfold liftTerm; unfold term_map_var; simpl; auto.
+    } rewrite H1. clear H1.
+    assert (Vector.map (fun a : Term => term_map_var (lift 0 0) a) args = args). {
+      admit.
+    }
+    rewrite H1. unfold id. reflexivity.
+Admitted.
 
 Definition term_is_fun (t : Term) : Prop :=
   match t with
