@@ -318,6 +318,98 @@ Proof. intros. induction t.
     rewrite IH. reflexivity.
 Qed.
 
+
+Fixpoint term_contains_bvar (index : nat) (t : Term) : Prop :=
+match t with
+| Var x => x = BVar index
+| EConst _ => False
+| @Fun n nm args => 
+  let fix args_contain_bvar {k} (ar : Vector.t Term k) :=
+     (match ar with
+      | Vector.nil _ => False
+      | Vector.cons _ h _ tl => term_contains_bvar index h \/ args_contain_bvar tl
+      end)
+  in args_contain_bvar args
+end.
+
+Class ContainsBVar A := {
+  contains_bvar : nat -> A -> Prop
+}.
+
+Global Instance ContainsBVarTerm : ContainsBVar Term := {
+  contains_bvar := term_contains_bvar
+}.
+
+Require Import Coq.Arith.EqNat.
+Require Import Coq.Arith.Bool_nat.
+From ST Require Import EVarsScratchwork.
+
+Lemma term_subst_bvar_free : forall (n : nat) (t h : Term),
+  ~(contains_bvar n h) -> (subst (BVar n) t h) = h.
+Proof.
+  unfold contains_bvar; unfold ContainsBVarTerm. intros. induction h as [x|k|k nm args].
+  - destruct x.
+  + simpl; auto.
+  + unfold term_contains_bvar in H. simpl; auto.
+    assert (n0 <> n). { simpl; auto. }
+    bdestruct (Nat.eqb n n0).
+ ++ contradict H1; simpl; auto.
+ ++ reflexivity.
+  - simpl; auto.
+  - set (P := (fun h : Term => ~ term_contains_bvar n h -> subst (BVar n) t h = h)).
+    fold P in H0. Check Vector.Forall_forall.
+    assert (forall (a : Term), VectorDef.In a args -> P a). {
+      apply Vector.Forall_forall. assumption.
+    }
+    assert(subst (BVar n) t (Fun nm args) = Fun nm (Vector.map (fun a : Term => tsubst (BVar n) t a) args)). {
+      simpl; auto.
+    } rewrite H2.
+    assert ((Vector.map (fun a : Term => tsubst (BVar n) t a) args) = args). {
+      induction args.
+      - simpl; auto.
+      - assert(Vector.map (fun a : Term => tsubst (BVar n) t a) (h :: args)%vector
+           = ((tsubst (BVar n) t h)::(Vector.map (fun a : Term => tsubst (BVar n) t a) args))%vector). {
+          simpl; auto.
+        }
+        rewrite H3.
+        assert(~ term_contains_bvar n (Fun nm (h :: args)%vector)
+                    -> ~ term_contains_bvar n (Fun nm args)). {
+          unfold term_contains_bvar; simpl; auto.
+        }
+        assert (Vector.Forall P args) as IH1. {
+          apply Vector.Forall_forall. intros; apply H1;
+            apply Vector.In_cons_tl; apply H5.
+        }
+        assert (~ term_contains_bvar n (Fun nm args)) as IH2. {
+          apply H4. apply H.
+        }
+        assert (forall a : Term, VectorDef.In a args -> P a) as IH3. {
+          intros. apply H1.  apply Vector.In_cons_tl; apply H5.
+        }
+        assert (subst (BVar n) t (Fun nm args) =
+                Fun nm (Vector.map (fun a : Term => tsubst (BVar n) t a) args)). {
+          unfold subst; simpl; auto.
+        }
+        assert((Vector.map (fun a : Term => tsubst (BVar n) t a) args) = args). {
+          apply IHargs. simpl; auto. simpl; auto. simpl; auto. simpl; auto.
+        } rewrite H6.
+        clear IH1 IH2 IH3 H6.
+        assert (tsubst (BVar n) t h = h). {
+          assert (P h). {
+            apply H1. apply Vector.In_cons_hd.
+          }
+          unfold P in H6. unfold subst in H6; unfold substTerm in H6.
+          apply H6.
+          assert (~ term_contains_bvar n (Fun nm (h :: args)%vector) -> ~ term_contains_bvar n h). {
+            simpl; auto.
+          }
+          apply H7. apply H.
+        }
+        rewrite H6. reflexivity.
+    }
+    rewrite H3. reflexivity.
+Qed.
+
 Definition tlift (c d : nat) (t : Term) := term_map_var (lift c d) t.
 
 (*
