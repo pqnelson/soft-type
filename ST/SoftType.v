@@ -1,14 +1,19 @@
 Require Import String.
+Require Import Lia.
 Require Import List.
 Require Import Nat.
 Require Import Coq.Vectors.Vector.
+Require Import Coq.Arith.Bool_nat.
 Require Export Coq.Arith.Compare_dec.
-Require Export List.
+Require Import Coq.Arith.EqNat.
+Require Import Coq.Arith.PeanoNat.
+Require Import Coq.Arith.Peano_dec.
+Require Import Coq.Logic.Eqdep_dec.
+Require Import Coq.Logic.FunctionalExtensionality.
 Require Export RelationClasses.
 Require Export Morphisms.
-Require Import Coq.Arith.PeanoNat.
-Require Import Coq.Logic.FunctionalExtensionality.
-Require Import Lia.
+Require Import Program.
+From ST Require Import EVarsScratchwork.
 Import ListNotations.
 Import VectorNotations.
 Open Scope string_scope.
@@ -87,12 +92,11 @@ Class Lift A := {
 }.
 
 Definition shift {A : Type} `{Lift A} (a : A) : A := lift 0 1 a.
-
 Global Instance VLift : Lift V := {
   lift (cutoff depth : nat) (x : V) :=
   match x with
   | FVar nm => x
-  | BVar n => if lt_dec n cutoff then x else BVar (n+depth)
+  | BVar n => if (* lt_dec n cutoff *) Nat.ltb n cutoff then x else BVar (n+depth)
   end
 }.
 
@@ -118,18 +122,19 @@ Proof.
   - simpl; auto. assert (n + 0 = n). { lia. } rewrite H. unfold id. reflexivity.
 Qed.
 
-Theorem case_lift_is_not_id : forall (i k n : nat), k <= n -> lift k i (BVar n) = BVar (n+i).
+
+Theorem case_lift_is_not_id : forall (i k n : nat), n >= k -> lift k i (BVar n) = BVar (n+i).
 Proof.
-  intros. simpl. destruct (lt_dec n k).
-  - contradict H. apply Gt.gt_not_le in l. auto.
-  - auto.
+  intros. simpl. bdestruct (Nat.ltb n k).
+  - contradict H. lia.
+  - reflexivity.
 Qed.
 
-Theorem case_lift_is_id : forall (i k n : nat), k > n -> lift k i (BVar n) = BVar (n).
+Theorem case_lift_is_id : forall (i k n : nat), n < k -> lift k i (BVar n) = BVar (n).
 Proof.
-  intros. simpl. destruct (lt_dec n k). 
-  - auto.
-  - apply not_lt in n0. contradict n0. apply Gt.gt_not_le in H. trivial.
+  intros. simpl. bdestruct (Nat.ltb n k).
+  - reflexivity.
+  - contradict H. lia.
 Qed.
 
 Example shift_is_not_id : shift (BVar 0) = (BVar 1).
@@ -268,13 +273,6 @@ match t with
 | Fun nm args => Fun nm (Vector.map (fun (a : Term) => term_map_var f a) args)
 end.
 
-Require Import Coq.Logic.Eqdep_dec.
-Require Import Coq.Arith.Peano_dec.
-Require Import Program.
-
-Check Term_ind.
-
-
 Lemma term_map_var_id : forall (t : Term),
   term_map_var id t = t.
 Proof. intros. induction t.
@@ -340,10 +338,6 @@ Global Instance ContainsBVarTerm : ContainsBVar Term := {
   contains_bvar := term_contains_bvar
 }.
 
-Require Import Coq.Arith.EqNat.
-Require Import Coq.Arith.Bool_nat.
-From ST Require Import EVarsScratchwork.
-
 Lemma term_subst_bvar_free : forall (n : nat) (t h : Term),
   ~(contains_bvar n h) -> (subst (BVar n) t h) = h.
 Proof.
@@ -357,7 +351,7 @@ Proof.
  ++ reflexivity.
   - simpl; auto.
   - set (P := (fun h : Term => ~ term_contains_bvar n h -> subst (BVar n) t h = h)).
-    fold P in H0. Check Vector.Forall_forall.
+    fold P in H0.
     assert (forall (a : Term), VectorDef.In a args -> P a). {
       apply Vector.Forall_forall. assumption.
     }
@@ -410,9 +404,9 @@ Proof.
     rewrite H3. reflexivity.
 Qed.
 
+(*
 Definition tlift (c d : nat) (t : Term) := term_map_var (lift c d) t.
 
-(*
 Fixpoint tlift (c d : nat) (t : Term) : Term :=
 match t with
 | Var y => Var (lift c d y)
@@ -426,6 +420,9 @@ Global Instance liftTerm : Lift Term :=
   lift (c d : nat) (t : Term) := term_map_var (lift c d) t
 }.
 
+Definition tlift := lift.
+(* (c d : nat) (t : Term) := term_map_var (lift c d) t. *)
+
 (** Lemma: [lift 0 0] is the identity transformation. *)
 Lemma term_zero_lift_is_id : forall (t : Term), lift 0 0 t = id t.
 Proof.
@@ -438,9 +435,8 @@ Proof.
     }
     unfold term_map_var. unfold id. reflexivity.
   - unfold lift; unfold term_map_var; simpl; auto.
-  - rename t into args. Check Vector.Forall_forall.
+  - rename t into args.
     set (P := (fun t : Term => lift 0 0 t = id t)). fold P in H.
-    Check (Vector.Forall_forall Term P n args).
     assert (forall a : Term, VectorDef.In a args -> P a). {
       apply (Vector.Forall_forall Term P n args). assumption.
     }
