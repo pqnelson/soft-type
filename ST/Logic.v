@@ -611,9 +611,12 @@ Lemma fresh_evar_context : forall (Γ : list Formula) (p : Formula),
   fresh (fresh_evar Γ p) Γ.
 Admitted.
 
+(* Exercise: Prove the following.
+
 Lemma fresh_evar_body : forall (Γ : list Formula) (p : Formula),
   fresh (fresh_evar Γ p) p.
 Admitted.
+*)
 
 (** The alternate approach is that fresh existential variables will be [0],
 and when we introduce one, we [shift_evars] in the related formulas. *)
@@ -940,17 +943,22 @@ Proof.
   assumption.
 Qed.
 
+(* This is an axiom, which can't really be proven. *)
 Lemma renaming_econst : forall (Γ1 Γ2 : list Formula) (p q : Formula),
   Γ1 ⊆ Γ2 -> 
   subst_bvar_inner 0 (fresh_evar Γ1 q) p :: Γ1 ⊢ q -> 
   subst_bvar_inner 0 (fresh_evar Γ2 q) p :: Γ2 ⊢ q.
 Admitted.
 
-(* This should be proven, it is not only obvious, but true. 
-Equally true, I am lazy. *)
 Lemma fresh_evar_alias : forall (Γ : list Formula) (p : Formula) (c : Term),
   c = (fresh_evar Γ p) <-> c = (fresh_evar (p::Γ)%list Falsum).
-Admitted.
+Proof.
+  intros. unfold fresh_evar. unfold fresh_evar_counter.
+  assert (list_evars (Falsum :: p :: Γ) = list_evars (p :: Γ)). {
+    simpl; auto.
+  }
+  rewrite H. reflexivity.
+Qed.
 
 Lemma subcontext_in_trans {Γ1 Γ2 p} :
   In p Γ1 -> Γ1 ⊆ Γ2 -> In p Γ2.
