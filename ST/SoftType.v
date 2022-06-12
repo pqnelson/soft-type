@@ -3,17 +3,21 @@ Require Import Lia.
 Require Import List.
 Require Import Nat.
 Require Import Coq.Vectors.Vector.
+Require Import Coq.Vectors.VectorEq.
 Require Import Coq.Arith.Bool_nat.
 Require Export Coq.Arith.Compare_dec.
 Require Import Coq.Arith.EqNat.
 Require Import Coq.Arith.PeanoNat.
 Require Import Coq.Arith.Peano_dec.
+Require Import Coq.Bool.Bool.
+Require Import Coq.Logic.Classical_Prop.
 Require Import Coq.Logic.Eqdep_dec.
 Require Import Coq.Logic.FunctionalExtensionality.
 Require Export RelationClasses.
 Require Export Morphisms.
 Require Import Program.
 From ST Require Import EVarsScratchwork.
+From ST Require Import Vector.
 Import ListNotations.
 Import VectorNotations.
 Open Scope string_scope.
@@ -28,6 +32,17 @@ constructs, things like [eqb] for boolean equality testing, and [subst] for
 substituting a [Term] for a [V]ariable.
 *)
 
+(** Exercise:
+Extend this definition to make [eqb] a proper equivalence relation, specifically:
+
+- [eqb_refl : forall (a : A), eqb a a = true]
+- [eqb_sym : forall (a b : A), eqb a b = eqb b a]
+- [eqb_trans : forall (a b c : A), eqb a b = eqb b c -> eqb a c]
+
+Exercise: Extend this definition to include
+- [eqb_eq : forall (a b : A), eqb a b = true <-> a = b]
+- [eqb_neq : forall (a b : A), eqb a b = false <-> a <> b] 
+*)
 Class Eq A :=
   {
     eqb: A -> A -> bool;
@@ -66,6 +81,12 @@ Inductive V :=
 | FVar : name -> V
 | BVar : nat -> V.
 
+Theorem var_dec (x y : V) : {x = y} + {x <> y}.
+Proof.
+  decide equality. apply string_dec. 
+  decide equality.
+Qed.
+
 Global Instance VEq : Eq V := {
   eqb (x y : V) :=
   match x, y with
@@ -75,6 +96,12 @@ Global Instance VEq : Eq V := {
   end
 }.
 
+Lemma V_eqb_refl : forall a : V, eqb a a = true.
+Proof.
+  intros. destruct a.
+  - unfold eqb; unfold VEq. simpl; auto. apply String.eqb_refl.
+  - unfold eqb; unfold VEq. simpl; auto. apply Nat.eqb_refl.
+Qed.
 
 Lemma V_eq_dec : forall a b : V, {a = b} + {a <> b}.
 Proof. decide equality.
@@ -82,6 +109,34 @@ Proof. decide equality.
   - apply string_dec.
   - decide equality.
 Defined.
+
+Theorem easy : forall p q:Prop, (p->q)->(~q->~p).
+Proof.
+  intros. intro. apply H0. apply H. exact H1. 
+Qed.
+
+Lemma PPNN : forall p:Prop, p -> ~ ~ p.
+Proof.
+  unfold not; intros; elim (classic p); auto.
+Qed.
+
+Theorem contra  : forall p q:Prop, (~q->~p) -> (p->q).
+Proof. intros. 
+  apply (easy (~q) (~p)) in H.
+  apply NNPP in H. assumption. apply PPNN; assumption. 
+Qed.
+
+Lemma V_eqb_eq : forall a b : V, eqb a b = true <-> a = b.
+Proof.
+  intros. split.
+  - intros. destruct a.
+  + unfold eqb in H; unfold VEq in H. destruct b. apply String.eqb_eq in H.
+    rewrite H; reflexivity. discriminate H.
+  + unfold eqb in H; unfold VEq in H. destruct b. discriminate.
+    apply Nat.eqb_eq in H.
+    rewrite H; reflexivity.
+  - intros. rewrite H; apply V_eqb_refl.
+Qed.
 
 (** We now need to handle [lift]-ing a bound variable. Since this will occur
 wherever a [BVar] can occur (and wherever a [Term] may occur), we will use a
@@ -155,7 +210,6 @@ logic easier later on.
 *)
 
 Unset Elimination Schemes.
-
 Inductive Term : Type :=
 | Var : V -> Term
 | EConst : nat -> Term
@@ -178,6 +232,66 @@ Proof.
     + apply IH.
 Qed.
 
+  Definition Term_rect := 
+fun (P : Term -> Type)
+  (f : forall v : V, P (Var v))
+  (f0 : forall n : nat, P (EConst n))
+  (f1 : forall (n : nat) (n0 : name)
+          (t : t Term n), P (@Fun n n0 t))
+  (t : Term) =>
+match t as t0 return (P t0) with
+| Var v => f v
+| EConst n => f0 n
+| @Fun n n0 t0 => f1 n n0 t0
+end.
+(*
+  Section Term_rect.
+    Variable P : Term -> Type.
+    Variable P_vector : forall n, Vector.t Term n -> Type.
+    Hypothesis P_nil : P_vector 0 []%vector.
+    Hypothesis P_cons : forall {n} t l, P t -> P_vector n l -> P_vector (S n) (t :: l)%vector.
+    Hypothesis P_Var : forall a, P (Var a).
+    Hypothesis P_EConst : forall n, P (EConst n).
+    Hypothesis P_Fun : forall {n} nm l, P_vector n l -> P (@Fun n nm l).
+Print list_rect.
+    Fixpoint Term_rect (t : Term) : P t :=
+      let fix go_vector {n} (l : Vector.t Term n) : P_vector n l :=
+          match l with
+          | []%vector => P_nil
+          | (t :: l)%vector => P_cons t l (Term_rect t) (go_vector l) (* (Term_rect t) (go_vector l) *)
+          end
+      in
+      match t with
+      | Var x => P_Var x
+      | EConst n => P_EConst n
+      | Fun nm args => P_Fun nm args (go_vector args)
+      end.
+  End Term_rect.
+*)
+(*
+  Section Term_rect.
+    Variable P : Term -> Type.
+    Variable P_vector : forall n, Vector.t Term n -> Type.
+    Hypothesis P_nil : P_vector 0 []%vector.
+    Hypothesis P_cons : forall {n} t l, P t -> P_vector n l -> P_vector (S n) (t :: l)%vector.
+    Hypothesis P_Var : forall a, P (Var a).
+    Hypothesis P_EConst : forall n, P (EConst n).
+    Hypothesis P_Fun : forall {n} nm l, P_vector n l -> P (@Fun n nm l).
+Print list_rect.
+    Fixpoint Term_rect (t : Term) : P t :=
+      let fix go_vector {n} (l : Vector.t Term n) : P_vector n l :=
+          match l with
+          | []%vector => P_nil
+          | (t :: l)%vector => P_cons t l (Term_rect t) (go_vector l) (* (Term_rect t) (go_vector l) *)
+          end
+      in
+      match t with
+      | Var x => P_Var x
+      | EConst n => P_EConst n
+      | Fun nm args => P_Fun nm args (go_vector args)
+      end.
+  End Term_rect.
+*)
 Set Elimination Schemes.
 
 Definition constant (c : name) : Term :=
@@ -188,21 +302,252 @@ match t1,t2 with
 | Var x1, Var x2 => eqb x1 x2
 | EConst n1, EConst n2 => eqb n1 n2
 | @Fun n1 s1 args1, @Fun n2 s2 args2 => 
+  (* eqb n1 n2 && eqb s1 s2 && (Vector.eqb Term term_eqb args1 args2) *)
   let fix args_eqb {n1 n2} (ar1 : Vector.t Term n1) (ar2 : Vector.t Term n2) : bool :=
       match ar1,ar2 with
       | Vector.nil _, Vector.nil _ => true
-      | Vector.cons _ h1 k1 t1,  Vector.cons _ h2 k2 t2 => if (eqb k1 k2) then
-                                                            (if (term_eqb h1 h2) then (args_eqb t1 t2) else false)
-                                                           else false
+      | Vector.cons _ h1 k1 t1,  Vector.cons _ h2 k2 t2 => (andb (term_eqb h1 h2) (args_eqb t1 t2))
       | _, _ => false
       end
-  in (eqb n1 n2) && (eqb s1 s2) && (args_eqb args1 args2)
+  in (eqb n1 n2) && (eqb s1 s2) && (args_eqb args1 args2) 
+| _, _ => false
+end.
+
+Fixpoint args_eqb {n1 n2} (ar1 : Vector.t Term n1) (ar2 : Vector.t Term n2) : bool :=
+match ar1,ar2 with
+| Vector.nil _, Vector.nil _ => true
+| Vector.cons _ h1 k1 t1,  Vector.cons _ h2 k2 t2 => (andb (term_eqb h1 h2) (args_eqb t1 t2))
 | _, _ => false
 end.
 
 Global Instance EqTerm : Eq Term := {
   eqb := term_eqb
 }.
+
+(*
+Require Import Coq.Vectors.VectorSpec.
+Lemma args_eqb_length (n1 n2 : nat) (args1 : Vector.t Term n1) (args2 : Vector.t Term n2) :
+  n1 <> n2 -> args_eqb (args1) (args2) = false.
+Proof.
+  intros. apply Coq.Arith.Compare_dec.not_eq in H.
+  destruct H.
+  - set (n := min n1 n2).
+    assert (n = n1). lia. 
+    set (k := n2 - n).
+    assert (n2 = n + k). lia.
+    revert args2. rewrite H1.
+    revert args1. assert(n + 0 = n1). lia. rewrite <- H2.
+    intros.
+    set (vs := (@Vector.splitat Term n k args2)).
+    set (us := (@Vector.splitat Term n 0 args1)).
+    destruct vs as [ls2 tls2]. destruct us as [ls1 tls1].
+    assert ({args_eqb ls1 ls2 = true} + {args_eqb ls1 ls2 <> true}). { decide equality. }
+    destruct H3.
+    + 
+    apply min_l in H as H1.
+    Vector.splitat(n, 
+*)
+
+Lemma args_eqb_ind (n : nat) (h1 h2 : Term) (args1 args2 : Vector.t Term n) :
+  args_eqb (h1::args1) (h2::args2)
+  = (eqb h1 h2) && (args_eqb args1 args2).
+Proof.
+  intros. unfold args_eqb; unfold EqTerm; unfold term_eqb. simpl; auto.
+Qed.
+
+(*
+Require Import Coq.Arith.EqNat.
+Lemma args_eqb_ind2 (n1 n2 : nat) (h1 h2 : Term) (args1 : Vector.t Term n1) (args2 : Vector.t Term n2) :
+  args_eqb (h1::args1) (h2::args2)
+  = (eqb n1 n2) && (eqb h1 h2) && (args_eqb args1 args2).
+Proof.
+  intros. assert ({n1 = n2} + {n1 <> n2}). decide equality. destruct H.
+  - revert args1; revert args2. rewrite e. intros.
+    assert (args_eqb (h1::args1) (h2::args2) = (eqb h1 h2) && (args_eqb args1 args2)). {
+      apply args_eqb_ind.
+    }
+    assert (eqb n2 n2 = true). apply Nat.eqb_refl. rewrite H0.
+    rewrite H. unfold andb; simpl; auto.
+  - 
+    
+  induction args1.
+  - destruct args2.
+  + unfold args_eqb; unfold EqTerm; unfold term_eqb. simpl; auto.
+  + simpl; auto. unfold args_eqb. apply andb_false_r.
+  - induction args2.
+  + simpl; auto. unfold args_eqb. apply andb_false_r.
+  +
+    assert (eqb (S n) (S n0) && eqb h1 h2 && args_eqb (h :: args1) (h0 :: args2)
+            
+   reflexivity. simpl; auto.
+    unfold args_eqb; unfold EqTerm; unfold term_eqb. simpl; auto.
+Qed.
+*)
+Lemma fun_eqb (n : nat) (s1 s2 : name) (args1 args2 : Vector.t Term n) :
+  eqb (Fun s1 args1) (Fun s2 args2) =
+  (eqb n n) && (eqb s1 s2) && (args_eqb args1 args2).
+Proof.
+  unfold eqb; unfold EqTerm; unfold term_eqb.
+  unfold andb. simpl; auto.
+Qed.
+
+Lemma fun_eqb2 (n1 n2 : nat) (s1 s2 : name) (args1 : Vector.t Term n1) (args2 : Vector.t Term n2) :
+  eqb (Fun s1 args1) (Fun s2 args2) =
+  (eqb n1 n2) && (eqb s1 s2) && (args_eqb args1 args2).
+Proof.
+  unfold eqb; unfold EqTerm; unfold term_eqb.
+  unfold andb. simpl; auto.
+Qed.
+
+Lemma constant_eqb_refl (s : name) : eqb (Fun s []) (Fun s []) = true.
+Proof.
+  intros.
+  assert ((eqb s s) = true). apply String.eqb_refl.
+  assert ((eqb 0 0) = true). unfold eqb; apply Nat.eqb_refl.
+  unfold eqb; unfold EqTerm; unfold term_eqb.
+  rewrite H; rewrite H0. unfold andb. reflexivity.
+Qed.
+
+Lemma fun_eqb_step (n : nat) (n0 : name) (t : Vector.t Term n) (h : Term) 
+  (IH : Forall (fun t : Term => eqb t t = true) t ->
+        (forall a : Term, VectorDef.In a t -> (fun t : Term => eqb t t = true) a) ->
+        eqb n n = true -> eqb (Fun n0 t) (Fun n0 t) = true) :
+  Forall (fun t : Term => eqb t t = true) (h :: t) -> eqb (Fun n0 (h :: t)) (Fun n0 (h :: t)) = true.
+Proof.
+  intros. set (P := (fun t : Term => eqb t t = true)). fold P in H.
+  assert (forall a : Term, VectorDef.In a (h :: t) -> P a). {
+    apply (Vector.Forall_forall Term P (S n) (h::t)).
+    assumption.
+  }
+  assert (Forall P (h :: t)) as IH1. assumption.
+  apply Vector_Forall_cons_iff in IH1. destruct IH1.
+  assert (forall a : Term, VectorDef.In a t -> P a). {
+    apply (Vector.Forall_forall Term P n t).
+    assumption.
+  }
+  fold P in IH.
+  assert (eqb (Fun n0 t) (Fun n0 t) = true). {
+    apply IH. assumption. assumption. apply Nat.eqb_refl.
+  }
+  unfold P in H1.
+  
+  assert (eqb (@Fun (S n) n0 (h :: t)) (@Fun (S n) n0 (h :: t)) = 
+          ((eqb (S n) (S n)) && (eqb n0 n0) &&
+            (args_eqb (h :: t) (h :: t)))). {
+    apply fun_eqb.
+  }
+  rewrite H5. 
+  assert (eqb (S n) (S n) = true). apply Nat.eqb_refl.
+  rewrite H6.
+  assert (eqb n0 n0 = true). apply String.eqb_refl.
+  rewrite H7. unfold andb.
+  
+  assert (args_eqb (h :: t) (h :: t) = 
+          eqb h h && args_eqb t t). {
+    apply args_eqb_ind.
+  }
+  rewrite H8. rewrite H1. unfold andb.
+  
+  assert (eqb (@Fun n n0 t) (@Fun n n0 t) = 
+          ((eqb n n) && (eqb n0 n0) &&
+            (args_eqb t t))). {
+    apply fun_eqb.
+  }
+  assert (eqb n n = true). apply Nat.eqb_refl.
+  rewrite H7 in H9. rewrite H10 in H9. unfold andb in H9.
+  rewrite H9 in H4. assumption.
+Qed.
+
+Theorem term_eqb_refl (t : Term) : eqb t t = true.
+Proof.
+  induction t.
+  - unfold eqb; apply V_eqb_refl.
+  - unfold eqb; apply Nat.eqb_refl.
+  - set (P := (fun t : Term => eqb t t = true)).
+    fold P in H. Check Vector.Forall_forall.
+    assert (forall a : Term, VectorDef.In a t -> P a). {
+      apply (Vector.Forall_forall Term P n t). assumption.
+    }
+    assert ((eqb n n) = true). unfold eqb; apply Nat.eqb_refl.
+    assert ((eqb n0 n0) = true). apply String.eqb_refl.
+    induction t.
+    apply (constant_eqb_refl n0).
+    apply fun_eqb_step. assumption. assumption.
+Qed.
+
+(*
+Theorem term_eqb_eq (t1 t2 : Term) : eqb t1 t2 = true -> t1 = t2.
+Proof.
+  intros. induction t1.
+  - unfold eqb in H; unfold EqTerm in H; unfold term_eqb in H. destruct t2.
+  + apply V_eqb_eq in H. rewrite H; reflexivity.
+  + discriminate.
+  + discriminate.
+  - unfold eqb in H; unfold EqTerm in H; unfold term_eqb in H. destruct t2. discriminate.
+    apply Nat.eqb_eq in H. rewrite H; reflexivity. discriminate.
+  - destruct t2. discriminate. discriminate.
+    assert (eqb (Fun n0 t) (Fun n2 t0)
+            = eqb n n1 && eqb n0 n2 && args_eqb t t0). {
+      apply (fun_eqb2 n n1 n0 n2 t t0).
+    }
+    rewrite H in H1.
+    assert (eqb n n1 && eqb n0 n2 = true /\ args_eqb t t0 = true). apply andb_prop. assumption.
+    destruct H2.
+    assert (eqb n n1 = true /\ eqb n0 n2 = true). apply andb_prop; assumption.
+    destruct H4.
+    apply String.eqb_eq in H5. rewrite H5.
+    apply Nat.eqb_eq in H4. rename t into args1. rename t0 into args2.
+    rename n2 into nm.
+    induction args1.
+    + destruct args2. reflexivity. contradict H3. unfold args_eqb. discriminate.
+    + destruct args2. contradict H3; unfold args_eqb; discriminate.
+      Check args_eqb_ind.
+      
+      apply (args_eqb_ind n h h0 args1 args2) in H3 as H6.
+    assert (eqb n n1 = true). {
+      destruct H. unfold andb.
+    }
+  + assert ({v = v0} + {v <> v0}). { apply V_eq_dec. } destruct H0.
+    rewrite e; reflexivity.
+    contradiction.
+   destruct v; destruct v0. unfold eqb in H; unfold VEq in H. inversion H.
+    assert (Bool.reflect (n = n0) (n =? n0)). { apply eqb_spec. }
+    simpl; auto.
+    Compute (eqb_spec n n0).
+    apply eqb_spec in H1.
+     decide equality.
+   simpl; auto. unfold eqb in H; unfold EqTerm in H; unfold term_eqb in H. bdestruct (eqb v v0).
+  ++ 
+Qed.
+
+Lemma fun_eqb (n : nat) (s1 s2 : name) (args1 : Vector.t Term n) (args2 : Vector.t Term n) :
+  eqb (@Fun n s1 args1) (@Fun n s2 args2) = true <-> (s1 = s2 /\ args1 = args2).
+Proof.
+  intros.
+  split.
+  - intros. inversion H.
+    assert ((s1 =? s2) = true). {
+      unfold andb in H1; simpl; auto.
+      assert ((n =? n)%nat = true). apply Nat.eqb_refl.
+      rewrite H0 in H1.
+      destruct (s1 =? s2). reflexivity. discriminate.
+    }
+    assert ((n =? n)%nat = true). apply Nat.eqb_refl.
+    rewrite H0 in H1. rewrite H2 in H1. simpl in H1.
+    apply String.eqb_eq in H0.
+    split. assumption.
+    Check Vector.eqb_eq.
+    apply (Vector.eqb_eq Term term_eqb in H1. simpl; auto.
+
+Theorem term_dec (x y : Term) : {x = y} + {x <> y}.
+Proof.
+  intros. destruct (eqb x y) eqn:H.
+  - left. now apply eqb_eq.
+  decide equality. apply string_dec. 
+  decide equality.
+Qed.
+*)
+
 
 (** *** Substitution Type Class
 
