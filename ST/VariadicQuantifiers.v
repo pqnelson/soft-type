@@ -101,25 +101,7 @@ Qed.
 
 
 (** Substitution in Predicates and Formulas. *)
-Global Instance ContainsBVarPredicate : ContainsBVar Predicate := {
-  contains_bvar (index : nat) (p : Predicate) :=
-  match p with
-  | P n nm args => Vector.Exists (fun (arg : Term) => contains_bvar index arg)
-                   args
-  end
-}.
 
-Fixpoint formula_contains_bvar (index : nat) (A : Formula) : Prop :=
-match A with
-  | Falsum => False
-  | Atom pred => contains_bvar index pred
-  | And fm1 fm2 | Or fm1 fm2 | Implies fm1 fm2 => (formula_contains_bvar index fm1) \/ (formula_contains_bvar index fm2)
-  | Exists fm => (formula_contains_bvar (S index) fm)
-end.
-
-Global Instance ContainsBVarFormula : ContainsBVar Formula := {
-  contains_bvar := formula_contains_bvar
-}.
 
 
 (*

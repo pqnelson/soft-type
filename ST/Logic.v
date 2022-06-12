@@ -59,6 +59,14 @@ We encode the syntax of a predicate, analogous to [Term], as its arity
 Inductive Predicate : Type := 
 | P : forall (n : nat), name -> Vector.t Term n -> Predicate.
 
+Global Instance ContainsBVarPredicate : ContainsBVar Predicate := {
+  contains_bvar (index : nat) (p : Predicate) :=
+  match p with
+  | P n nm args => Vector.Exists (fun (arg : Term) => contains_bvar index arg)
+                   args
+  end
+}.
+
 Global Instance GroundPredicate : Ground Predicate := {
   is_ground (p : Predicate) := match p with
   | P n s args => Vector.Forall is_ground args
@@ -115,6 +123,18 @@ Inductive Formula : Type :=
 Definition Not (p : Formula) := Implies p Falsum.
 Definition Verum : Formula := Implies Falsum Falsum.
 Definition Forall (p : Formula) := Not (Exists (Not p)).
+
+Fixpoint formula_contains_bvar (index : nat) (A : Formula) : Prop :=
+match A with
+  | Falsum => False
+  | Atom pred => contains_bvar index pred
+  | And fm1 fm2 | Or fm1 fm2 | Implies fm1 fm2 => (formula_contains_bvar index fm1) \/ (formula_contains_bvar index fm2)
+  | Exists fm => (formula_contains_bvar (S index) fm)
+end.
+
+Global Instance ContainsBVarFormula : ContainsBVar Formula := {
+  contains_bvar := formula_contains_bvar
+}.
 
 Fixpoint is_ground_formula (phi : Formula) :=
 match phi with
@@ -265,8 +285,8 @@ doesn't destroy correctness ;p
 Section CavalierAxiomatics.
 (* Look, I placed the dangerous bit in their own section. Everything is
 safe and sound now, right? *)
-Axiom term_eq_dec : forall (x y : Term), {x = y} + {x <> y}.
-Axiom predicate_eq_dec : forall (x y : Predicate), {x = y} + {x <> y}.
+Lemma term_eq_dec : forall (x y : Term), {x = y} + {x <> y}. Admitted.
+Lemma predicate_eq_dec : forall (x y : Predicate), {x = y} + {x <> y}. Admitted.
 End CavalierAxiomatics.
 
 Lemma Term_eq_dec : forall a b : Term, {a = b} + {a <> b}.
@@ -587,11 +607,13 @@ Definition fresh_evar (Γ : list Formula) (p : Formula) : Term :=
 EConst (fresh_evar_counter Γ p).
 
 (* TODO: these next two results should be proven, but I am lazy. *)
-Hypothesis fresh_evar_context : forall (Γ : list Formula) (p : Formula),
+Lemma fresh_evar_context : forall (Γ : list Formula) (p : Formula),
   fresh (fresh_evar Γ p) Γ.
+Admitted.
 
-Hypothesis fresh_evar_body : forall (Γ : list Formula) (p : Formula),
+Lemma fresh_evar_body : forall (Γ : list Formula) (p : Formula),
   fresh (fresh_evar Γ p) p.
+Admitted.
 
 (** The alternate approach is that fresh existential variables will be [0],
 and when we introduce one, we [shift_evars] in the related formulas. *)
@@ -918,20 +940,17 @@ Proof.
   assumption.
 Qed.
 
-Axiom renaming_econst : forall (Γ1 Γ2 : list Formula) (p q : Formula),
+Lemma renaming_econst : forall (Γ1 Γ2 : list Formula) (p q : Formula),
   Γ1 ⊆ Γ2 -> 
   subst_bvar_inner 0 (fresh_evar Γ1 q) p :: Γ1 ⊢ q -> 
   subst_bvar_inner 0 (fresh_evar Γ2 q) p :: Γ2 ⊢ q.
-
-Axiom renaming_econst2 : forall (Γ1 Γ2 : list Formula) (p : Formula) (c : Term),
-  Γ1 ⊆ Γ2 -> 
-  c = (fresh_evar Γ1 p) -> 
-  c = (fresh_evar Γ2 p).
+Admitted.
 
 (* This should be proven, it is not only obvious, but true. 
 Equally true, I am lazy. *)
-Axiom renaming_econst3 : forall (Γ : list Formula) (p : Formula) (c : Term),
+Lemma fresh_evar_alias : forall (Γ : list Formula) (p : Formula) (c : Term),
   c = (fresh_evar Γ p) <-> c = (fresh_evar (p::Γ)%list Falsum).
+Admitted.
 
 Lemma subcontext_in_trans {Γ1 Γ2 p} :
   In p Γ1 -> Γ1 ⊆ Γ2 -> In p Γ2.
@@ -958,10 +977,10 @@ intros Γ₁ Γ₂ ? P Q [] ?. revert Γ₂ H. induction H0; intros.
   apply IHdeducible2. f_equiv. assumption.
 + apply (ND_exists_intro (p := p) (t := t)); auto.
 + apply subcontext_cons in H1 as H2. destruct H2.
-  apply @renaming_econst2 with (c := c) (p := q) in H3 as H4.
+  apply renaming_econst with (p := p) (q := q) in H3 as H4. 2: { rewrite <- H; assumption. }
   apply (ND_unprioritize (p := Exists p) (Γ := Γ₂)).
-  apply (ND_exists_elim_small (Γ := Γ₂) (c := c)).
-  apply IHdeducible. f_equiv. assumption. assumption. assumption. assumption.
+  apply (ND_exists_elim_small (Γ := Γ₂) (c := (fresh_evar Γ₂ q))). assumption.
+  reflexivity. assumption.
 + apply ND_proof_by_contradiction. apply IHdeducible. f_equiv. auto.
 + apply (@subcontext_cons Γ Γ₂ p) in H1 as H2. apply IHdeducible. destruct H2. 
   assumption.
