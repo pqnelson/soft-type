@@ -18,789 +18,11 @@ Require Export Morphisms.
 Require Import Program.
 From ST Require Import EVarsScratchwork.
 From ST Require Import Vector.
+From ST Require Export Logic.V Logic.Term.
 Import ListNotations.
 Import VectorNotations.
 Open Scope string_scope.
 
-(* TODO: re-do the local context so that it meshes with locally nameless
-variables correctly. *)
-
-(** * Introduction
-
-We have a couple of helper type classes for recurring functions expected on
-constructs, things like [eqb] for boolean equality testing, and [subst] for
-substituting a [Term] for a [V]ariable.
-*)
-
-(** Exercise #1.
-Extend this definition to make [eqb] a proper equivalence relation, specifically:
-
-- [eqb_refl : forall (a : A), eqb a a = true]
-- [eqb_sym : forall (a b : A), eqb a b = eqb b a]
-- [eqb_trans : forall (a b c : A), eqb a b = eqb b c -> eqb a c]
-
-Exercise #2.
-Extend this definition to include
-- [eqb_eq : forall (a b : A), eqb a b = true <-> a = b]
-- [eqb_neq : forall (a b : A), eqb a b = false <-> a <> b] 
-*)
-Class Eq A :=
-  {
-    eqb: A -> A -> bool;
-  }.
-
-Fixpoint list_eqb {A : Type} (v1 v2 : list A) (eq : A -> A -> bool) : bool :=
-  match v1,v2 with
-  | List.nil, List.nil => true
-  | List.cons h1 t1, List.cons h2 t2 => andb (eq h1 h2) (list_eqb t1 t2 eq)
-  | _, _ => false
-  end.
-
-Global Instance natEq : Eq nat := {
-  eqb (n1 n2 : nat) := Nat.eqb n1 n2
-}.
-
-Global Instance stringEq : Eq string := {
-  eqb := String.eqb
-}.
-
-(** * Soft Type System
-
-We begin formalizing our soft type system by defining variables and terms,
-and the other syntactic constructs. Then we will inductively define the rules
-of inference for the soft type system.
-
-** Names and Variables
-
-We use locally nameless encoding of bound variables. Free variables are any
-arbitrary [name] instances. Bound variables are de Bruijn indices.
-*)
-
-Definition name : Type := string.
-
-Inductive V :=
-| FVar : name -> V
-| BVar : nat -> V.
-
-Theorem var_dec (x y : V) : {x = y} + {x <> y}.
-Proof.
-  decide equality. apply string_dec. 
-  decide equality.
-Qed.
-
-Global Instance VEq : Eq V := {
-  eqb (x y : V) :=
-  match x, y with
-  | FVar s1, FVar s2 => eqb s1 s2
-  | BVar n1, BVar n2 => eqb n1 n2
-  | _, _ => false
-  end
-}.
-
-Lemma V_eqb_refl : forall a : V, eqb a a = true.
-Proof.
-  intros. destruct a.
-  - unfold eqb; unfold VEq. simpl; auto. apply String.eqb_refl.
-  - unfold eqb; unfold VEq. simpl; auto. apply Nat.eqb_refl.
-Qed.
-
-Lemma V_eq_dec : forall a b : V, {a = b} + {a <> b}.
-Proof. decide equality.
-  try (left; reflexivity); try (right; congruence).
-  - apply string_dec.
-  - decide equality.
-Defined.
-
-Theorem easy : forall p q:Prop, (p->q)->(~q->~p).
-Proof.
-  intros. intro. apply H0. apply H. exact H1. 
-Qed.
-
-Lemma PPNN : forall p:Prop, p -> ~ ~ p.
-Proof.
-  unfold not; intros; elim (classic p); auto.
-Qed.
-
-Theorem contra  : forall p q:Prop, (~q->~p) -> (p->q).
-Proof. intros. 
-  apply (easy (~q) (~p)) in H.
-  apply NNPP in H. assumption. apply PPNN; assumption. 
-Qed.
-
-Lemma V_eqb_eq : forall a b : V, eqb a b = true <-> a = b.
-Proof.
-  intros. split.
-  - intros. destruct a.
-  + unfold eqb in H; unfold VEq in H. destruct b. apply String.eqb_eq in H.
-    rewrite H; reflexivity. discriminate H.
-  + unfold eqb in H; unfold VEq in H. destruct b. discriminate.
-    apply Nat.eqb_eq in H.
-    rewrite H; reflexivity.
-  - intros. rewrite H; apply V_eqb_refl.
-Qed.
-
-(** We now need to handle [lift]-ing a bound variable. Since this will occur
-wherever a [BVar] can occur (and wherever a [Term] may occur), we will use a
-typeclass to handle this. *)
-
-Class Lift A := {
-  lift : nat -> nat -> A -> A
-}.
-
-Definition shift {A : Type} `{Lift A} (a : A) : A := lift 0 1 a.
-Global Instance VLift : Lift V := {
-  lift (cutoff depth : nat) (x : V) :=
-  match x with
-  | FVar nm => x
-  | BVar n => if (* lt_dec n cutoff *) Nat.ltb n cutoff then x else BVar (n+depth)
-  end
-}.
-
-(** Lemma: [lift 0 0] is the identity transformation.
-Lemma zero_lift_is_id0 : forall (n : nat), lift 0 0 (BVar n) = (BVar n).
-Proof.
-  intros. simpl. auto.
-Qed.
-Lemma zero_lift_is_id : forall (x : V), lift 0 0 x = x.
-Proof.
-  intros. destruct x.
-  - simpl; auto.
-  - simpl; auto.
-Qed.
- *)
-
-
-Lemma zero_lift_is_id :  lift 0 0 = id.
-Proof.
-  apply functional_extensionality.
-  intros. destruct x.
-  - simpl; auto.
-  - simpl; auto. assert (n + 0 = n). { lia. } rewrite H. unfold id. reflexivity.
-Qed.
-
-
-Theorem case_lift_is_not_id : forall (i k n : nat), n >= k -> lift k i (BVar n) = BVar (n+i).
-Proof.
-  intros. simpl. bdestruct (Nat.ltb n k).
-  - contradict H. lia.
-  - reflexivity.
-Qed.
-
-Theorem case_lift_is_id : forall (i k n : nat), n < k -> lift k i (BVar n) = BVar (n).
-Proof.
-  intros. simpl. bdestruct (Nat.ltb n k).
-  - reflexivity.
-  - contradict H. lia.
-Qed.
-
-Example shift_is_not_id : shift (BVar 0) = (BVar 1).
-Proof.
-  trivial.
-Qed.
-
-Example shift_really_shifts : forall (n : nat), shift (BVar n) = BVar (n + 1).
-Proof.
-  trivial.
-Qed.
-
-(** ** Terms
-
-A [Term] is either a variable, or an n-ary function. Constants are just nullary 
-functions. We do carve out [EConst] for existential constants, to make
-logic easier later on.
-*)
-
-Unset Elimination Schemes.
-Inductive Term : Type :=
-| Var : V -> Term
-| EConst : nat -> Term
-| Fun {n : nat} : name -> Vector.t Term n -> Term.
-
-Definition Term_ind (P : Term -> Prop)
-       (HVar : forall v : V, P (Var v))
-       (HConst : forall n : nat, P (EConst n))
-       (HFun : forall (n : nat) (n0 : name) (t : t Term n),
-         Vector.Forall P t -> P (Fun n0 t))
-       (* ^ extra hypothesis *)
-  : forall t : Term, P t.
-Proof.
-  fix SELF 1; intros [ | | n m t].
-  - apply HVar.
-  - apply HConst.
-  - apply HFun.
-    induction t as [ | ? ? ? IH ]; constructor.
-    + apply SELF.
-    + apply IH.
-Qed.
-
-  Definition Term_rect := 
-fun (P : Term -> Type)
-  (f : forall v : V, P (Var v))
-  (f0 : forall n : nat, P (EConst n))
-  (f1 : forall (n : nat) (n0 : name)
-          (t : t Term n), P (@Fun n n0 t))
-  (t : Term) =>
-match t as t0 return (P t0) with
-| Var v => f v
-| EConst n => f0 n
-| @Fun n n0 t0 => f1 n n0 t0
-end.
-(*
-  Section Term_rect.
-    Variable P : Term -> Type.
-    Variable P_vector : forall n, Vector.t Term n -> Type.
-    Hypothesis P_nil : P_vector 0 []%vector.
-    Hypothesis P_cons : forall {n} t l, P t -> P_vector n l -> P_vector (S n) (t :: l)%vector.
-    Hypothesis P_Var : forall a, P (Var a).
-    Hypothesis P_EConst : forall n, P (EConst n).
-    Hypothesis P_Fun : forall {n} nm l, P_vector n l -> P (@Fun n nm l).
-Print list_rect.
-    Fixpoint Term_rect (t : Term) : P t :=
-      let fix go_vector {n} (l : Vector.t Term n) : P_vector n l :=
-          match l with
-          | []%vector => P_nil
-          | (t :: l)%vector => P_cons t l (Term_rect t) (go_vector l) (* (Term_rect t) (go_vector l) *)
-          end
-      in
-      match t with
-      | Var x => P_Var x
-      | EConst n => P_EConst n
-      | Fun nm args => P_Fun nm args (go_vector args)
-      end.
-  End Term_rect.
-*)
-(*
-  Section Term_rect.
-    Variable P : Term -> Type.
-    Variable P_vector : forall n, Vector.t Term n -> Type.
-    Hypothesis P_nil : P_vector 0 []%vector.
-    Hypothesis P_cons : forall {n} t l, P t -> P_vector n l -> P_vector (S n) (t :: l)%vector.
-    Hypothesis P_Var : forall a, P (Var a).
-    Hypothesis P_EConst : forall n, P (EConst n).
-    Hypothesis P_Fun : forall {n} nm l, P_vector n l -> P (@Fun n nm l).
-Print list_rect.
-    Fixpoint Term_rect (t : Term) : P t :=
-      let fix go_vector {n} (l : Vector.t Term n) : P_vector n l :=
-          match l with
-          | []%vector => P_nil
-          | (t :: l)%vector => P_cons t l (Term_rect t) (go_vector l) (* (Term_rect t) (go_vector l) *)
-          end
-      in
-      match t with
-      | Var x => P_Var x
-      | EConst n => P_EConst n
-      | Fun nm args => P_Fun nm args (go_vector args)
-      end.
-  End Term_rect.
-*)
-Set Elimination Schemes.
-
-Definition constant (c : name) : Term :=
-@Fun 0 c [].
-
-Fixpoint term_eqb (t1 t2 : Term) : bool :=
-match t1,t2 with
-| Var x1, Var x2 => eqb x1 x2
-| EConst n1, EConst n2 => eqb n1 n2
-| @Fun n1 s1 args1, @Fun n2 s2 args2 => 
-  (* eqb n1 n2 && eqb s1 s2 && (Vector.eqb Term term_eqb args1 args2) *)
-  let fix args_eqb {n1 n2} (ar1 : Vector.t Term n1) (ar2 : Vector.t Term n2) : bool :=
-      match ar1,ar2 with
-      | Vector.nil _, Vector.nil _ => true
-      | Vector.cons _ h1 k1 t1,  Vector.cons _ h2 k2 t2 => (andb (term_eqb h1 h2) (args_eqb t1 t2))
-      | _, _ => false
-      end
-  in (eqb n1 n2) && (eqb s1 s2) && (args_eqb args1 args2) 
-| _, _ => false
-end.
-
-Fixpoint args_eqb {n1 n2} (ar1 : Vector.t Term n1) (ar2 : Vector.t Term n2) : bool :=
-match ar1,ar2 with
-| Vector.nil _, Vector.nil _ => true
-| Vector.cons _ h1 k1 t1,  Vector.cons _ h2 k2 t2 => (andb (term_eqb h1 h2) (args_eqb t1 t2))
-| _, _ => false
-end.
-
-Global Instance EqTerm : Eq Term := {
-  eqb := term_eqb
-}.
-
-(*
-Require Import Coq.Vectors.VectorSpec.
-Lemma args_eqb_length (n1 n2 : nat) (args1 : Vector.t Term n1) (args2 : Vector.t Term n2) :
-  n1 <> n2 -> args_eqb (args1) (args2) = false.
-Proof.
-  intros. apply Coq.Arith.Compare_dec.not_eq in H.
-  destruct H.
-  - set (n := min n1 n2).
-    assert (n = n1). lia. 
-    set (k := n2 - n).
-    assert (n2 = n + k). lia.
-    revert args2. rewrite H1.
-    revert args1. assert(n + 0 = n1). lia. rewrite <- H2.
-    intros.
-    set (vs := (@Vector.splitat Term n k args2)).
-    set (us := (@Vector.splitat Term n 0 args1)).
-    destruct vs as [ls2 tls2]. destruct us as [ls1 tls1].
-    assert ({args_eqb ls1 ls2 = true} + {args_eqb ls1 ls2 <> true}). { decide equality. }
-    destruct H3.
-    + 
-    apply min_l in H as H1.
-    Vector.splitat(n, 
-*)
-
-Lemma args_eqb_ind (n : nat) (h1 h2 : Term) (args1 args2 : Vector.t Term n) :
-  args_eqb (h1::args1) (h2::args2)
-  = (eqb h1 h2) && (args_eqb args1 args2).
-Proof.
-  intros. unfold args_eqb; unfold EqTerm; unfold term_eqb. simpl; auto.
-Qed.
-
-(*
-Require Import Coq.Arith.EqNat.
-Lemma args_eqb_ind2 (n1 n2 : nat) (h1 h2 : Term) (args1 : Vector.t Term n1) (args2 : Vector.t Term n2) :
-  args_eqb (h1::args1) (h2::args2)
-  = (eqb n1 n2) && (eqb h1 h2) && (args_eqb args1 args2).
-Proof.
-  intros. assert ({n1 = n2} + {n1 <> n2}). decide equality. destruct H.
-  - revert args1; revert args2. rewrite e. intros.
-    assert (args_eqb (h1::args1) (h2::args2) = (eqb h1 h2) && (args_eqb args1 args2)). {
-      apply args_eqb_ind.
-    }
-    assert (eqb n2 n2 = true). apply Nat.eqb_refl. rewrite H0.
-    rewrite H. unfold andb; simpl; auto.
-  - 
-    
-  induction args1.
-  - destruct args2.
-  + unfold args_eqb; unfold EqTerm; unfold term_eqb. simpl; auto.
-  + simpl; auto. unfold args_eqb. apply andb_false_r.
-  - induction args2.
-  + simpl; auto. unfold args_eqb. apply andb_false_r.
-  +
-    assert (eqb (S n) (S n0) && eqb h1 h2 && args_eqb (h :: args1) (h0 :: args2)
-            
-   reflexivity. simpl; auto.
-    unfold args_eqb; unfold EqTerm; unfold term_eqb. simpl; auto.
-Qed.
-*)
-Lemma fun_eqb (n : nat) (s1 s2 : name) (args1 args2 : Vector.t Term n) :
-  eqb (Fun s1 args1) (Fun s2 args2) =
-  (eqb n n) && (eqb s1 s2) && (args_eqb args1 args2).
-Proof.
-  unfold eqb; unfold EqTerm; unfold term_eqb.
-  unfold andb. simpl; auto.
-Qed.
-
-Lemma fun_eqb2 (n1 n2 : nat) (s1 s2 : name) (args1 : Vector.t Term n1) (args2 : Vector.t Term n2) :
-  eqb (Fun s1 args1) (Fun s2 args2) =
-  (eqb n1 n2) && (eqb s1 s2) && (args_eqb args1 args2).
-Proof.
-  unfold eqb; unfold EqTerm; unfold term_eqb.
-  unfold andb. simpl; auto.
-Qed.
-
-Lemma constant_eqb_refl (s : name) : eqb (Fun s []) (Fun s []) = true.
-Proof.
-  intros.
-  assert ((eqb s s) = true). apply String.eqb_refl.
-  assert ((eqb 0 0) = true). unfold eqb; apply Nat.eqb_refl.
-  unfold eqb; unfold EqTerm; unfold term_eqb.
-  rewrite H; rewrite H0. unfold andb. reflexivity.
-Qed.
-
-Lemma fun_eqb_step (n : nat) (n0 : name) (t : Vector.t Term n) (h : Term) 
-  (IH : Forall (fun t : Term => eqb t t = true) t ->
-        (forall a : Term, VectorDef.In a t -> (fun t : Term => eqb t t = true) a) ->
-        eqb n n = true -> eqb (Fun n0 t) (Fun n0 t) = true) :
-  Forall (fun t : Term => eqb t t = true) (h :: t) -> eqb (Fun n0 (h :: t)) (Fun n0 (h :: t)) = true.
-Proof.
-  intros. set (P := (fun t : Term => eqb t t = true)). fold P in H.
-  assert (forall a : Term, VectorDef.In a (h :: t) -> P a). {
-    apply (Vector.Forall_forall Term P (S n) (h::t)).
-    assumption.
-  }
-  assert (Forall P (h :: t)) as IH1. assumption.
-  apply Vector_Forall_cons_iff in IH1. destruct IH1.
-  assert (forall a : Term, VectorDef.In a t -> P a). {
-    apply (Vector.Forall_forall Term P n t).
-    assumption.
-  }
-  fold P in IH.
-  assert (eqb (Fun n0 t) (Fun n0 t) = true). {
-    apply IH. assumption. assumption. apply Nat.eqb_refl.
-  }
-  unfold P in H1.
-  
-  assert (eqb (@Fun (S n) n0 (h :: t)) (@Fun (S n) n0 (h :: t)) = 
-          ((eqb (S n) (S n)) && (eqb n0 n0) &&
-            (args_eqb (h :: t) (h :: t)))). {
-    apply fun_eqb.
-  }
-  rewrite H5. 
-  assert (eqb (S n) (S n) = true). apply Nat.eqb_refl.
-  rewrite H6.
-  assert (eqb n0 n0 = true). apply String.eqb_refl.
-  rewrite H7. unfold andb.
-  
-  assert (args_eqb (h :: t) (h :: t) = 
-          eqb h h && args_eqb t t). {
-    apply args_eqb_ind.
-  }
-  rewrite H8. rewrite H1. unfold andb.
-  
-  assert (eqb (@Fun n n0 t) (@Fun n n0 t) = 
-          ((eqb n n) && (eqb n0 n0) &&
-            (args_eqb t t))). {
-    apply fun_eqb.
-  }
-  assert (eqb n n = true). apply Nat.eqb_refl.
-  rewrite H7 in H9. rewrite H10 in H9. unfold andb in H9.
-  rewrite H9 in H4. assumption.
-Qed.
-
-Theorem term_eqb_refl (t : Term) : eqb t t = true.
-Proof.
-  induction t.
-  - unfold eqb; apply V_eqb_refl.
-  - unfold eqb; apply Nat.eqb_refl.
-  - set (P := (fun t : Term => eqb t t = true)).
-    fold P in H. Check Vector.Forall_forall.
-    assert (forall a : Term, VectorDef.In a t -> P a). {
-      apply (Vector.Forall_forall Term P n t). assumption.
-    }
-    assert ((eqb n n) = true). unfold eqb; apply Nat.eqb_refl.
-    assert ((eqb n0 n0) = true). apply String.eqb_refl.
-    induction t.
-    apply (constant_eqb_refl n0).
-    apply fun_eqb_step. assumption. assumption.
-Qed.
-
-(*
-Theorem term_eqb_eq (t1 t2 : Term) : eqb t1 t2 = true -> t1 = t2.
-Proof.
-  intros. induction t1.
-  - unfold eqb in H; unfold EqTerm in H; unfold term_eqb in H. destruct t2.
-  + apply V_eqb_eq in H. rewrite H; reflexivity.
-  + discriminate.
-  + discriminate.
-  - unfold eqb in H; unfold EqTerm in H; unfold term_eqb in H. destruct t2. discriminate.
-    apply Nat.eqb_eq in H. rewrite H; reflexivity. discriminate.
-  - destruct t2. discriminate. discriminate.
-    assert (eqb (Fun n0 t) (Fun n2 t0)
-            = eqb n n1 && eqb n0 n2 && args_eqb t t0). {
-      apply (fun_eqb2 n n1 n0 n2 t t0).
-    }
-    rewrite H in H1.
-    assert (eqb n n1 && eqb n0 n2 = true /\ args_eqb t t0 = true). apply andb_prop. assumption.
-    destruct H2.
-    assert (eqb n n1 = true /\ eqb n0 n2 = true). apply andb_prop; assumption.
-    destruct H4.
-    apply String.eqb_eq in H5. rewrite H5.
-    apply Nat.eqb_eq in H4. rename t into args1. rename t0 into args2.
-    rename n2 into nm.
-    induction args1.
-    + destruct args2. reflexivity. contradict H3. unfold args_eqb. discriminate.
-    + destruct args2. contradict H3; unfold args_eqb; discriminate.
-      Check args_eqb_ind.
-      
-      apply (args_eqb_ind n h h0 args1 args2) in H3 as H6.
-    assert (eqb n n1 = true). {
-      destruct H. unfold andb.
-    }
-  + assert ({v = v0} + {v <> v0}). { apply V_eq_dec. } destruct H0.
-    rewrite e; reflexivity.
-    contradiction.
-   destruct v; destruct v0. unfold eqb in H; unfold VEq in H. inversion H.
-    assert (Bool.reflect (n = n0) (n =? n0)). { apply eqb_spec. }
-    simpl; auto.
-    Compute (eqb_spec n n0).
-    apply eqb_spec in H1.
-     decide equality.
-   simpl; auto. unfold eqb in H; unfold EqTerm in H; unfold term_eqb in H. bdestruct (eqb v v0).
-  ++ 
-Qed.
-
-Lemma fun_eqb (n : nat) (s1 s2 : name) (args1 : Vector.t Term n) (args2 : Vector.t Term n) :
-  eqb (@Fun n s1 args1) (@Fun n s2 args2) = true <-> (s1 = s2 /\ args1 = args2).
-Proof.
-  intros.
-  split.
-  - intros. inversion H.
-    assert ((s1 =? s2) = true). {
-      unfold andb in H1; simpl; auto.
-      assert ((n =? n)%nat = true). apply Nat.eqb_refl.
-      rewrite H0 in H1.
-      destruct (s1 =? s2). reflexivity. discriminate.
-    }
-    assert ((n =? n)%nat = true). apply Nat.eqb_refl.
-    rewrite H0 in H1. rewrite H2 in H1. simpl in H1.
-    apply String.eqb_eq in H0.
-    split. assumption.
-    Check Vector.eqb_eq.
-    apply (Vector.eqb_eq Term term_eqb in H1. simpl; auto.
-
-Theorem term_dec (x y : Term) : {x = y} + {x <> y}.
-Proof.
-  intros. destruct (eqb x y) eqn:H.
-  - left. now apply eqb_eq.
-  decide equality. apply string_dec. 
-  decide equality.
-Qed.
-*)
-
-
-(** *** Substitution Type Class
-
-We will want to substitute a term for a variable frequently in many syntactic
-constructs. Towards that end, we have a [Subst] type class.
-
-We may also want to do this with a vector of variables and a vector of terms,
-both vectors of the same length. Fortunately, we only have to define this
-"many-folded substitution" function only once.
-*)
-Class Subst A : Type := 
-{
-  subst : V -> Term -> A -> A
-}.
-
-Fixpoint subst_many {n} {A : Type} `{Subst A} (vars : Vector.t V n) (terms : Vector.t Term n) (a : A) : A :=
-match vars, terms with
-| x::xs, t::tms => subst_many xs (Vector.tl terms) (subst x t a)
-| _, _ => a
-end.
-
-(* HACK: since Coq cannot handle recursive typeclasses, we isolate the only
-recursive substitution here.
-
-See: https://stackoverflow.com/a/52349387 *)
-Fixpoint tsubst (x : V) (t : Term) (e : Term) : Term :=
-match e with
-| Var y => if eqb x y then t else e
-| @Fun n f args => @Fun n f (Vector.map (fun (a : Term) => tsubst x t a) args)
-| EConst _ => e
-end.
-
-Global Instance substTerm : Subst Term :=
-{
-  subst (x : V) (t : Term) (e : Term) := tsubst x t e
-}.
-
-Compute (subst (BVar 1) (Fun "c" []) (Fun "f" [Var (BVar 1) ; Var (FVar "x")])).
-
-Example term_subst_1 : subst (BVar 1) (Fun "c" []) (Fun "f" [Var (BVar 1) ; Var (FVar "x")])
-= Fun "f" [(Fun "c" []) ; Var (FVar "x")].
-Proof.
-  trivial.
-Qed.
-
-Example term_subst_2 : subst (FVar "x") (Fun "c" []) (Fun "f" [Var (BVar 1) ; Var (FVar "x")])
-= Fun "f" [Var (BVar 1) ; (Fun "c" [])].
-Proof.
-  trivial.
-Qed.
-
-Example term_subst_3 : subst (BVar 3) (Fun "c" []) (Fun "f" [Var (BVar 1) ; Var (FVar "x")])
-= Fun "f" [Var (BVar 1) ; Var (FVar "x")].
-Proof.
-  trivial.
-Qed.
-
-Example term_subst_4 : subst (FVar "z") (Fun "c" []) (Fun "f" [Var (BVar 1) ; Var (FVar "x")])
-= Fun "f" [Var (BVar 1) ; Var (FVar "x")].
-Proof.
-  trivial.
-Qed.
-
-Fixpoint term_map_var (f : V -> V) (t : Term) : Term :=
-match t with
-| Var x => Var (f x)
-| EConst _ => t
-| Fun nm args => Fun nm (Vector.map (fun (a : Term) => term_map_var f a) args)
-end.
-
-Lemma term_map_var_id : forall (t : Term),
-  term_map_var id t = t.
-Proof. intros. induction t.
- (* apply Term_ind_mut.  dependent inversion t.  (fun (args : TermArgs) => (List.map (term_m.  *)
-  - simpl; auto.
-  - simpl; auto.
-  - rename t into args. 
-    assert(forall (t : Term), Vector.In t args -> ((fun t : Term => term_map_var id t = t) t)). {
-      apply Vector.Forall_forall. assumption.
-    }
-    assert (term_map_var id (Fun n0 args) = Fun n0 (Vector.map (fun (a : Term) => term_map_var id a) args)). {
-      unfold term_map_var; simpl; auto.
-    } rewrite H1.
-    simpl in H0.
-    assert (Vector.map (fun a : Term => term_map_var id a) args = args) as IH. {
-      induction args.
-      simpl; auto.
-      assert (Vector.map (fun a : Term => term_map_var id a) (h :: args)
-               = (term_map_var id h)::(Vector.map (fun a : Term => term_map_var id a) args)). {
-        unfold Vector.map; simpl; auto.
-      }
-      rewrite H2.
-      assert (term_map_var id h = h). {
-        apply H0. apply In_cons_hd.
-      }
-      rewrite H3.
-      assert (Vector.map (fun a : Term => term_map_var id a) args = args). { 
-        apply IHargs. simpl; auto. inversion H.
-        - apply Vector.Forall_forall.
-          assert (forall a : Term, VectorDef.In a args -> VectorDef.In a (h :: args)). {
-            intros. apply In_cons_tl. assumption.
-          }
-          intros.
-          simpl; auto.
-        - intros. assert (Vector.In t (h :: args)). apply In_cons_tl. assumption.
-          apply H0 in H5. assumption.
-        - simpl; auto.
-      }
-      rewrite H4. reflexivity.
-    }
-    rewrite IH. reflexivity.
-Qed.
-
-
-Fixpoint term_contains_bvar (index : nat) (t : Term) : Prop :=
-match t with
-| Var x => x = BVar index
-| EConst _ => False
-| @Fun n nm args => 
-  let fix args_contain_bvar {k} (ar : Vector.t Term k) :=
-     (match ar with
-      | Vector.nil _ => False
-      | Vector.cons _ h _ tl => term_contains_bvar index h \/ args_contain_bvar tl
-      end)
-  in args_contain_bvar args
-end.
-
-Class ContainsBVar A := {
-  contains_bvar : nat -> A -> Prop
-}.
-
-Global Instance ContainsBVarTerm : ContainsBVar Term := {
-  contains_bvar := term_contains_bvar
-}.
-
-Lemma term_subst_bvar_free : forall (n : nat) (t h : Term),
-  ~(contains_bvar n h) -> (subst (BVar n) t h) = h.
-Proof.
-  unfold contains_bvar; unfold ContainsBVarTerm. intros. induction h as [x|k|k nm args].
-  - destruct x.
-  + simpl; auto.
-  + unfold term_contains_bvar in H. simpl; auto.
-    assert (n0 <> n). { simpl; auto. }
-    bdestruct (Nat.eqb n n0).
- ++ contradict H1; simpl; auto.
- ++ reflexivity.
-  - simpl; auto.
-  - set (P := (fun h : Term => ~ term_contains_bvar n h -> subst (BVar n) t h = h)).
-    fold P in H0.
-    assert (forall (a : Term), VectorDef.In a args -> P a). {
-      apply Vector.Forall_forall. assumption.
-    }
-    assert(subst (BVar n) t (Fun nm args) = Fun nm (Vector.map (fun a : Term => tsubst (BVar n) t a) args)). {
-      simpl; auto.
-    } rewrite H2.
-    assert ((Vector.map (fun a : Term => tsubst (BVar n) t a) args) = args). {
-      induction args.
-      - simpl; auto.
-      - assert(Vector.map (fun a : Term => tsubst (BVar n) t a) (h :: args)%vector
-           = ((tsubst (BVar n) t h)::(Vector.map (fun a : Term => tsubst (BVar n) t a) args))%vector). {
-          simpl; auto.
-        }
-        rewrite H3.
-        assert(~ term_contains_bvar n (Fun nm (h :: args)%vector)
-                    -> ~ term_contains_bvar n (Fun nm args)). {
-          unfold term_contains_bvar; simpl; auto.
-        }
-        assert (Vector.Forall P args) as IH1. {
-          apply Vector.Forall_forall. intros; apply H1;
-            apply Vector.In_cons_tl; apply H5.
-        }
-        assert (~ term_contains_bvar n (Fun nm args)) as IH2. {
-          apply H4. apply H.
-        }
-        assert (forall a : Term, VectorDef.In a args -> P a) as IH3. {
-          intros. apply H1.  apply Vector.In_cons_tl; apply H5.
-        }
-        assert (subst (BVar n) t (Fun nm args) =
-                Fun nm (Vector.map (fun a : Term => tsubst (BVar n) t a) args)). {
-          unfold subst; simpl; auto.
-        }
-        assert((Vector.map (fun a : Term => tsubst (BVar n) t a) args) = args). {
-          apply IHargs. simpl; auto. simpl; auto. simpl; auto. simpl; auto.
-        } rewrite H6.
-        clear IH1 IH2 IH3 H6.
-        assert (tsubst (BVar n) t h = h). {
-          assert (P h). {
-            apply H1. apply Vector.In_cons_hd.
-          }
-          unfold P in H6. unfold subst in H6; unfold substTerm in H6.
-          apply H6.
-          assert (~ term_contains_bvar n (Fun nm (h :: args)%vector) -> ~ term_contains_bvar n h). {
-            simpl; auto.
-          }
-          apply H7. apply H.
-        }
-        rewrite H6. reflexivity.
-    }
-    rewrite H3. reflexivity.
-Qed.
-
-(*
-Definition tlift (c d : nat) (t : Term) := term_map_var (lift c d) t.
-
-Fixpoint tlift (c d : nat) (t : Term) : Term :=
-match t with
-| Var y => Var (lift c d y)
-| Fun f args => Fun f (Vector.map (fun (a : Term) => tlift c d a) args)
-| EConst _ => t
-end.
-*)
-
-Global Instance liftTerm : Lift Term :=
-{
-  lift (c d : nat) (t : Term) := term_map_var (lift c d) t
-}.
-
-Definition tlift := lift.
-(* (c d : nat) (t : Term) := term_map_var (lift c d) t. *)
-
-(** Lemma: [lift 0 0] is the identity transformation. *)
-Lemma term_zero_lift_is_id : forall (t : Term), lift 0 0 t = id t.
-Proof.
-  intros. induction t.
-  - assert (@lift V VLift 0 0 = id). apply zero_lift_is_id.
-    unfold lift; unfold liftTerm. rewrite H. 
-    assert (id (Var v) = Var v). { unfold id; simpl; auto. }
-    assert (@lift V VLift 0 0 v = id v). {
-      apply equal_f. trivial.
-    }
-    unfold term_map_var. unfold id. reflexivity.
-  - unfold lift; unfold term_map_var; simpl; auto.
-  - rename t into args.
-    set (P := (fun t : Term => lift 0 0 t = id t)). fold P in H.
-    assert (forall a : Term, VectorDef.In a args -> P a). {
-      apply (Vector.Forall_forall Term P n args). assumption.
-    }
-    
-    assert (lift 0 0 (Fun n0 args) = Fun n0 (Vector.map (fun a : Term => term_map_var (lift 0 0) a) args)). {
-      unfold lift; unfold liftTerm; unfold term_map_var; simpl; auto.
-    } rewrite H1. clear H1.
-    assert (Vector.map (fun a : Term => term_map_var (lift 0 0) a) args = args). {
-      admit.
-    }
-    rewrite H1. unfold id. reflexivity.
-Admitted.
-
-Definition term_is_fun (t : Term) : Prop :=
-  match t with
-  | Fun _ _ =>  True
-  | _ => False
-  end.
 
 (** ** Radix Types
 
@@ -853,6 +75,25 @@ Global Instance liftRadix : Lift Radix :=
   end
 }.
 
+Global Instance EnumerateEVarsRadix : EnumerateEVars Radix := {
+list_evars R := match R with
+| Ast => []%list
+| Mode n s args => Vector.fold_left (fun l' => fun (arg : Term) => insert_merge (list_evars arg) l') []%list args
+end
+}.
+
+Theorem list_evars_radix_sorted : forall (R : Radix),
+  sorted (list_evars R).
+Proof.
+  intros.
+  induction R.
+  - simpl; auto. apply sorted_nil.
+  - rename t into args.
+    unfold list_evars; unfold EnumerateEVarsRadix.
+    apply insert_merge_vector_fold_sorted2.
+    apply sorted_nil.
+Qed.
+
 (** ** Attributes
 
 Attributes may be prepended to types, when registered in an existential cluster.
@@ -886,6 +127,20 @@ Global Instance liftAttr : Lift Attribute :=
   | Attr n s args => Attr n s (Vector.map (fun (a : Term) => lift c d a) args)
   end
 }.
+
+Global Instance EnumerateEVarsAttribute : EnumerateEVars Attribute := {
+list_evars attr := match attr with
+| Attr n s args => Vector.fold_left (fun l' => fun (arg : Term) => insert_merge (list_evars arg) l') []%list args
+end
+}.
+
+Theorem list_evars_attribute_sorted : forall (A : Attribute),
+  sorted (list_evars A).
+Proof. intros. destruct A. rename t into args.
+  unfold list_evars; unfold EnumerateEVarsAttribute.
+  apply insert_merge_vector_fold_sorted2.
+  apply sorted_nil.
+Qed.
 
 (** ** Adjectives
 
@@ -922,6 +177,24 @@ Global Instance liftAdj : Lift Adjective :=
   end
 }.
 
+Global Instance EnumerateEVarsAdjective : EnumerateEVars Adjective := {
+list_evars adj := match adj with
+| Pos a => list_evars a
+| Neg a => list_evars a
+end
+}.
+
+Theorem list_evars_adjective_sorted : forall (A : Adjective),
+  sorted (list_evars A).
+Proof. intros. destruct A.
+  - assert(list_evars (Pos a) = list_evars a). { simpl; auto. }
+    rewrite H.
+    apply list_evars_attribute_sorted.
+  - assert(list_evars (Neg a) = list_evars a). { simpl; auto. }
+    rewrite H.
+    apply list_evars_attribute_sorted.
+Qed.
+
 (* ** Soft Types
 
 We can encode a [SoftType] as an ordered pair of a list of [Adjective] and
@@ -953,6 +226,23 @@ Global Instance liftSoftType : Lift SoftType :=
   end
 }.
 
+Global Instance EnumerateEVarsSoftType : EnumerateEVars SoftType := {
+list_evars T := match T with
+| (adjectives,T) => List.fold_left (fun l' => fun (adj : Adjective) => insert_merge (list_evars adj) l')
+ adjectives (list_evars T)
+end
+}.
+
+Theorem list_evars_soft_type_sorted : forall (T : SoftType),
+  sorted (list_evars T).
+Proof. intros. destruct T.
+  assert (sorted (list_evars r)). { apply list_evars_radix_sorted. }
+  unfold list_evars; unfold EnumerateEVarsSoftType.
+  apply insert_merge_list_fold_sorted2 with (init := list_evars r).
+  assumption.
+Qed.
+
+(** *** Miscellaneous predicates concerning soft types *)
 Definition type_is_named (T : SoftType) (n : name) : Prop :=
   match T with
   | (_, Mode k1 s1 args1) => n = s1
@@ -1011,6 +301,34 @@ Global Instance liftJudgementType : Lift JudgementType := {
   end
 }.
 
+Global Instance EnumerateEVarsJudgementType : EnumerateEVars JudgementType := {
+list_evars Judg := match Judg with
+| CorrectContext => []%list
+| Esti t T => insert_merge (list_evars t) (list_evars T)
+| Subtype T1 T2 => insert_merge (list_evars T1) (list_evars T2)
+| Inhabited T => list_evars T
+| HasAttribute a T => insert_merge (list_evars a) (list_evars T)
+end
+}.
+
+Theorem list_evars_judgement_type_sorted : forall (j : JudgementType),
+  sorted (list_evars j).
+Proof.
+  intros. induction j.
+  - unfold list_evars; unfold EnumerateEVarsJudgementType. apply sorted_nil.
+  - unfold list_evars; unfold EnumerateEVarsJudgementType.
+    assert (sorted (list_evars s)). { apply list_evars_soft_type_sorted. }
+    apply insert_merge_sorted2. assumption.
+  - unfold list_evars; unfold EnumerateEVarsJudgementType.
+    assert (sorted (list_evars s0)). { apply list_evars_soft_type_sorted. }
+    apply insert_merge_sorted2. assumption.
+  - unfold list_evars; unfold EnumerateEVarsJudgementType.
+    assert (sorted (list_evars s)). { apply list_evars_soft_type_sorted. }
+    assumption.
+  - unfold list_evars; unfold EnumerateEVarsJudgementType.
+    assert (sorted (list_evars s)). { apply list_evars_soft_type_sorted. }
+    apply insert_merge_sorted2. assumption.
+Qed.
 (** ** Local Contexts
 
 A local context is just a finite list of [Decl] (declaration of variables and
@@ -1036,6 +354,24 @@ Fixpoint local_vars (lc : LocalContext) : Vector.t Term (List.length lc) :=
   | List.cons (x,_) tl => (Var x)::(local_vars tl)
   | List.nil => []
   end.
+
+Definition evars_local_declaration (d : Decl) :=
+  match d with
+  | (_, T) => (list_evars T)
+  end.
+
+Global Instance EnumerateEVarsLocalContext : EnumerateEVars LocalContext := {
+list_evars lc := List.fold_left (fun l' => fun (d : Decl) => 
+  insert_merge (evars_local_declaration d) l')
+ lc []%list
+}.
+
+Theorem list_evars_local_context_sorted : forall (lc : LocalContext),
+  sorted (list_evars lc).
+Proof. intros.
+  unfold list_evars; unfold EnumerateEVarsLocalContext.
+  apply insert_merge_list_fold_sorted. apply sorted_nil.
+Qed.
 
 (* Helper function to turn a [nat] into a [string]. *)
 Fixpoint string_of_nat_aux (time n : nat) (acc : string) : string :=
@@ -1088,6 +424,27 @@ variables as found in a [LocalContext].
 *)
 Definition GlobalContext := list (LocalContext * JudgementType).
 
+
+Definition list_evars_gc_def (d : LocalContext * JudgementType) :=
+match d with
+  | (lc, T) => insert_merge (list_evars lc) (list_evars T)
+  end.
+
+Global Instance EnumerateEVarsGlobalContext : EnumerateEVars GlobalContext := {
+list_evars gc := List.fold_left (fun l' => fun d => 
+  insert_merge (list_evars_gc_def d)  l')
+ gc []%list
+}.
+
+Theorem list_evars_global_context_sorted : forall (gc : GlobalContext),
+  sorted (list_evars gc).
+Proof.
+  intros.
+  unfold list_evars; unfold EnumerateEVarsGlobalContext.
+  apply insert_merge_list_fold_sorted. apply sorted_nil.
+Qed.
+
+
 (** Judgements of the form [t : T] are where we define new constant terms. *)
 Fixpoint gc_defines_term (gc : GlobalContext) (n : name) : Prop :=
   match gc with
@@ -1119,6 +476,25 @@ Fixpoint gc_contains (Γ : GlobalContext) (def : (LocalContext * JudgementType))
 We can now code up the inference rules for Wiedijk's soft type system inductively. 
 *)
 Definition Judgement : Type := GlobalContext * LocalContext * JudgementType.
+
+Global Instance EnumerateEVarsJudgement : EnumerateEVars Judgement := {
+list_evars j := match j with
+| (gc,lc,judge) => insert_merge (list_evars gc) (insert_merge (list_evars lc) (list_evars judge))
+end
+}.
+
+Theorem list_evars_judgement_sorted : forall (j : Judgement),
+  sorted (list_evars j).
+Proof. intros. destruct j.
+  unfold list_evars; unfold EnumerateEVarsJudgement.
+  assert (sorted (list_evars j)). { apply list_evars_judgement_type_sorted. }
+  destruct p.
+  assert (sorted (insert_merge (list_evars l) (list_evars j))). {
+    apply insert_merge_sorted2; assumption.
+  }
+  apply insert_merge_sorted2; assumption.
+Qed.
+
 
 Definition push {A : Type} (a : A) (l : list A) : list A :=
   List.app l (List.cons a List.nil).

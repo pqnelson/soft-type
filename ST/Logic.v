@@ -12,9 +12,9 @@ Require Export Morphisms.
 Require Import List.
 Import ListNotations.
 Open Scope string_scope.
-From ST Require Export SoftType.
-From ST Require Import EVarsScratchwork.
-From ST Require Import Vector.
+From ST Require Import EVarsScratchwork Vector SoftType.
+From ST Require Export Logic.V Logic.Term Logic.Predicate Logic.Formula.
+
 Import VectorNotations.
 (** * Natural Deduction
 
@@ -27,252 +27,6 @@ References relevant:
 - https://hal.archives-ouvertes.fr/hal-03096253
 *)
 
-
-Class Ground A : Type := {
-  is_ground : A -> Prop
-}.
-
-Fixpoint is_ground_term (t : Term) :=
-match t with
-| Var x => match x with
-           | FVar _ => True
-           | _ => False
-           end
-| EConst _ => False
-| Fun f args => let fix are_args_ground {k} (ars : Vector.t Term k) :=
-                    match ars with
-                    | [] => True
-                    | a::tl => is_ground_term a /\ are_args_ground tl
-                    end
-                in are_args_ground args
-end.
-
-Global Instance GroundTerm : Ground Term := {
-  is_ground := is_ground_term
-}.
-
-(** ** Predicates
-
-We encode the syntax of a predicate, analogous to [Term], as its arity 
-[n : nat], its [name], and its arguments as a [Vector.t Term].
-*)
-Inductive Predicate : Type := 
-| P : forall (n : nat), name -> Vector.t Term n -> Predicate.
-
-Global Instance ContainsBVarPredicate : ContainsBVar Predicate := {
-  contains_bvar (index : nat) (p : Predicate) :=
-  match p with
-  | P n nm args => Vector.Exists (fun (arg : Term) => contains_bvar index arg)
-                   args
-  end
-}.
-
-Global Instance GroundPredicate : Ground Predicate := {
-  is_ground (p : Predicate) := match p with
-  | P n s args => Vector.Forall is_ground args
-  end
-}.
-
-Global Instance substPred : Subst Predicate :=
-{
-  subst (x : V) (t : Term) (p : Predicate) :=
-  match p with
-  | P n s args => P n s (Vector.map (fun (arg : Term) => subst x t arg) args)
-  end
-}.
-
-Example pred_subst_1 : subst (BVar 0) (Fun "c" []) (P 3 "P" [Var (BVar 1); Var (BVar 0); Fun "f" [Var (BVar 0); Var (FVar "y")]])
-= (P 3 "P" [Var (BVar 1); (Fun "c" []); Fun "f" [(Fun "c" []); Var (FVar "y")]]).
-Proof.
-  trivial.
-Qed.
-
-Global Instance EqPred : Eq Predicate :=
-{
-  eqb (P1 P2 : Predicate) :=
-  match P1,P2 with
-  | P n1 s1 args1, P n2 s2 args2 => 
-      if andb (eqb n1 n2) (eqb s1 s2)
-      then vectors_eqb args1 args2 term_eqb
-      else false
-  end
-}.
-
-Global Instance LiftPred : Lift Predicate :=
-{
-  lift (c d : nat) (p : Predicate) :=
-  match p with
-  | P n s args => P n s (Vector.map (fun (a : Term) => lift c d a) args)
-  end
-}.
-
-(** ** Formulas
-
-The grammar of formulas is rather straightforward. Honestly, I was unsure how
-"slick" I should be: [Verum] could be defined as [Not Falsum], but using a 
-minimal set of connectives seemed _too_ slick for my tastes.
-*)
-Inductive Formula : Type :=
-| Falsum
-| Atom : Predicate -> Formula
-| And : Formula -> Formula -> Formula
-| Or : Formula -> Formula -> Formula
-| Implies : Formula -> Formula -> Formula
-| Exists : Formula -> Formula.
-
-Definition Not (p : Formula) := Implies p Falsum.
-Definition Verum : Formula := Implies Falsum Falsum.
-Definition Forall (p : Formula) := Not (Exists (Not p)).
-
-Fixpoint formula_contains_bvar (index : nat) (A : Formula) : Prop :=
-match A with
-  | Falsum => False
-  | Atom pred => contains_bvar index pred
-  | And fm1 fm2 | Or fm1 fm2 | Implies fm1 fm2 => (formula_contains_bvar index fm1) \/ (formula_contains_bvar index fm2)
-  | Exists fm => (formula_contains_bvar (S index) fm)
-end.
-
-Global Instance ContainsBVarFormula : ContainsBVar Formula := {
-  contains_bvar := formula_contains_bvar
-}.
-
-Fixpoint is_ground_formula (phi : Formula) :=
-match phi with
-| Falsum => True
-| Atom p => is_ground p
-| And f1 f2 | Or f1 f2 | Implies f1 f2 => (is_ground_formula f1) /\ (is_ground_formula f2)
-| Exists f => is_ground_formula f
-end.
-
-Global Instance GroundFormula : Ground Formula := {
-  is_ground := is_ground_formula
-}.
-
-Definition is_sentence (A : Formula) := is_ground_formula A.
-
-(** We can recursively test if two [Formula] objects are identical. This is an
-equality at the level of syntax. *)
-Fixpoint eq_formula (A B : Formula) : bool :=
-match A,B with
-| Falsum, Falsum => true
-| Atom (P n1 s1 args1), Atom (P n2 s2 args2) => 
-      if andb (eqb n1 n2) (eqb s1 s2)
-      then vectors_eqb args1 args2 term_eqb
-      else false
-| And A1 A2, And B1 B2 => andb (eq_formula A1 B1) (eq_formula A2 B2)
-| Or A1 A2, Or B1 B2 => andb (eq_formula A1 B1) (eq_formula A2 B2)
-| Implies A1 A2, Implies B1 B2 =>  andb (eq_formula A1 B1) (eq_formula A2 B2)
-| Exists A1, Exists B1 => eq_formula A1 B1
-| _, _ => false
-end.
-
-Global Instance EqFormula : Eq Formula := {
-  eqb := eq_formula
-}.
-
-(** "Variable closing", or binding a free variable to a quantifier (or any
-binder), is a bit tricky. We have a helper function here for the iterative
-step. It behaves "functorially", descending to the leafs, i.e., [Falsum] and
-[Atom]. *)
-Fixpoint var_closing_iter (x : name) (n : nat) (phi : Formula) : Formula :=
-match phi with
-| Falsum => phi
-| Atom pred => Atom (subst (FVar x) (Var (BVar n)) pred)
-| And fm1 fm2 => And (var_closing_iter x n fm1) (var_closing_iter x n fm2)
-| Or fm1 fm2 => Or (var_closing_iter x n fm1) (var_closing_iter x n fm2)
-| Implies fm1 fm2 => Implies (var_closing_iter x n fm1) (var_closing_iter x n fm2)
-| Exists fm => Exists (var_closing_iter x (S n) fm)
-end.
-
-Definition quantify (x : name) (phi : Formula) : Formula :=
-  var_closing_iter x 0 phi.
-
-(** Substitution, when replacing a bound variable with an arbitrary term,
-requires care. Why? Because we need to lift the bound variable as we encounter
-quantifiers. 
-
-Particular care must be taken when the term refers to variables or quantities
-in the "context part". Towards that end, we must [lift] the term whenever a
-quantifier is encountered.
-*)
-
-Fixpoint subst_bvar_inner (n : nat) (t : Term) (phi : Formula) : Formula :=
-match phi with
-| Falsum => phi
-| Atom pred => Atom (subst (BVar n) t pred)
-| And fm1 fm2 => And (subst_bvar_inner n t fm1) (subst_bvar_inner n t fm2)
-| Or fm1 fm2 => Or (subst_bvar_inner n t fm1) (subst_bvar_inner n t fm2)
-| Implies fm1 fm2 => Implies (subst_bvar_inner n t fm1) (subst_bvar_inner n t fm2)
-| Exists fm => Exists (subst_bvar_inner (S n) (lift (S n) 1 t) fm)
-end.
-
-(** Specialization and choosing a witness for existential quantification
-amounts to the same "operations" of peeling off an outermost quantifier, then
-behaving as expected. *)
-Fixpoint quantifier_elim_subst (n : nat) (t : Term) (phi : Formula) : Formula :=
-match phi with
-| Exists fm => subst_bvar_inner n t fm
-| And A B => And (quantifier_elim_subst n t A) (quantifier_elim_subst n t B)
-| Or A B => Or (quantifier_elim_subst n t A) (quantifier_elim_subst n t B)
-| Implies A B => Implies (quantifier_elim_subst n t A) (quantifier_elim_subst n t B)
-| _ => phi
-end.
-
-Example subst_bvar_1 : quantifier_elim_subst 0 (Fun "t" []) (Forall (Exists (Atom (P 2 "P" [Var (BVar 0); Var (BVar 1)]))))
-= Not (Not (Exists (Atom (P 2 "P" [Var (BVar 0); Fun "t" []])))).
-Proof.
-  trivial.
-Qed.
-
-Fixpoint lift_formula (c d : nat) (phi : Formula) : Formula :=
-  match phi with
-  | Falsum => phi
-  | Atom pred => Atom (lift c d pred)
-  | And fm1 fm2 => And (lift_formula c d fm1) (lift_formula c d fm2)
-  | Or fm1 fm2 => Or (lift_formula c d fm1) (lift_formula c d fm2)
-  | Implies fm1 fm2 => Implies (lift_formula c d fm1) (lift_formula c d fm2)
-  | Exists fm => Exists (lift_formula (S c) d fm)
-  end.
-
-Global Instance LiftFormula : Lift Formula :=
-{
-  lift := lift_formula
-}.
-(**
-We would encode $\forall x\exists y P(x,y)$ as 
-[Forall (Exists (Atom (P 2 "P" [BVar 1; BVar 0])))], using de Bruijn indices.
-*)
-Check Forall (Exists (Atom (P 2 "P" [Var (BVar 1); Var (BVar 0)]))).
-
-
-(**
-We now have a helper function to quantify over a given variable. They handle
-lifting and replacement, if the variable appears at all in the [Formula]. If
-[n] does not appear in [Formula], then the formula [phi] is returned unchanged.
-*)
-Definition every (n : name) (phi : Formula) : Formula :=
-  let phi' := quantify n (shift phi)
-  in if eqb phi' (shift phi) then phi else Forall phi'.
-
-Definition any (n : name) (phi : Formula) : Formula :=
-  let phi' := quantify n (shift phi)
-  in if eqb phi' (shift phi) then phi else Exists phi'.
-
-(** As a smoke check, we see if variations on a simple formula are "parsed" as
-expected. *)
-Example quantifier_example_1 : (every "x" (any "y" (Atom (P 2 "P" [Var (FVar "x"); Var (FVar "y")]))))
-= Forall (Exists (Atom (P 2 "P" [Var (BVar 1); Var (BVar 0)]))).
-Proof.
-  trivial.
-Qed.
-
-Example quantifier_example_2 : 
-  every "z" (any "y" (Atom (P 2 "P" [Var (FVar "x"); Var (FVar "y")])))
-  = Exists (Atom (P 2 "P" [Var (FVar "x"); Var (BVar 0)])).
-Proof.
-  trivial.
-Qed.
-
 (** ** Rules of Natural Deduction 
 
 We can now encode natural deduction rules using a straightforward inductive
@@ -281,324 +35,6 @@ And that's because I am too lazy to do this adequately. Modeling arguments
 as vectors screw everything up. But it's obviously not wrong. Let's hope it 
 doesn't destroy correctness ;p 
 *)
-
-Section CavalierAxiomatics.
-(* Look, I placed the dangerous bit in their own section. Everything is
-safe and sound now, right? *)
-Lemma term_eq_dec : forall (x y : Term), {x = y} + {x <> y}. Admitted.
-Lemma predicate_eq_dec : forall (x y : Predicate), {x = y} + {x <> y}. Admitted.
-End CavalierAxiomatics.
-
-Lemma Term_eq_dec : forall a b : Term, {a = b} + {a <> b}.
-Proof. apply term_eq_dec. Defined.
-
-
-Lemma Predicate_eq_dec : forall a b : Predicate, {a = b} + {a <> b}.
-Proof. apply predicate_eq_dec. Defined.
-
-Lemma Formula_eq_dec : forall a b : Formula, {a = b} + {a <> b}.
-Proof. decide equality. apply predicate_eq_dec. Defined.
-
-Class Fresh A : Type := {
-  fresh : Term -> A -> Prop
-}.
-
-Section FreshTermDefinition.
-
-Fixpoint fresh_term (c : Term) (t : Term) : Prop :=
-match t, c with
-| Var x, Var y => x <> y
-| EConst m, EConst n => m <> n
-| Fun f args1, Fun g args2 => t <> c /\
-  let fix fresh_args {k} (ars : Vector.t Term k) :=
-          match ars with
-          | tm::ars1 => (fresh_term c tm) /\ fresh_args ars1
-          | [] => True
-          end
-  in fresh_args args1
-| _,_ => True
-end.
-End FreshTermDefinition.
-
-Global Instance FreshTerm : Fresh Term := {
-  fresh := fresh_term
-}.
-
-Global Instance FreshPredicate : Fresh Predicate := {
-  fresh (c : Term) (p : Predicate) :=
-  match p with
-  | P n s args => Vector.Forall (fun (arg : Term) => fresh c arg) args
-  end
-}.
-
-Fixpoint fresh_formula (c : Term) (p : Formula) : Prop :=
-  match p with
-  | Falsum => True
-  | Atom phi => fresh c phi
-  | And A B | Or A B | Implies A B => (fresh_formula c A) /\ (fresh_formula c B)
-  | Exists A => fresh_formula c A
-  end.
-  
-Global Instance FreshFormula : Fresh Formula := {
-  fresh := fresh_formula
-}.
-
-Global Instance FreshContext : Fresh (list Formula) := {
-  fresh c Γ := List.Forall (fun fm => fresh c fm) Γ
-}.
-
-(** ** New Existential Variables 
-
-We can assemble the list of existential variables appearing in a
-[Term], [Formula], whatever. Then we can generate a fresh
-existential variable.
-*)
-
-Class EnumerateEVars A := {
-  list_evars : A -> list nat
-}.
-
-Fixpoint list_evars_term (t : Term) (l : list nat) : list nat :=
-match t with
-| Var _ => l
-| EConst n => insert n l
-| Fun f args => Vector.fold_left (fun l' => fun (arg : Term) => insert_merge (list_evars_term arg l') l')
-    l args
-end.
-
-Theorem list_evars_term_sorted : forall (t : Term) (l : list nat),
-  sorted l -> sorted (list_evars_term t l).
-Proof.
-  intros.
-  induction t.
-  - assert (list_evars_term (Var v) l = l). { simpl; auto. }
-    rewrite H0. assumption.
-  - assert (list_evars_term (EConst n) l = insert n l). { simpl; auto. }
-    rewrite H0. apply insert_preserves_sorted. assumption.
-  - rename t into args.
-    assert (list_evars_term (Fun n0 args) l = Vector.fold_left (fun l' => fun (arg : Term) => insert_merge (list_evars_term arg l') l')
-    l args). { simpl; auto. }
-    rewrite H1. apply insert_merge_vector_fold_sorted2.
-    assumption.
-Qed.
-
-Global Instance EnumerateEVarsTerm : EnumerateEVars Term := {
-  list_evars tm := list_evars_term tm []
-}.
-
-Theorem list_evers_term_sorted : forall (t : Term),
-  sorted (list_evars t).
-Proof. intros.
-  unfold list_evars; unfold EnumerateEVarsTerm.
-  assert (sorted []%list). { apply sorted_nil. }
-  apply list_evars_term_sorted.
-  assumption.
-Qed.
-
-Global Instance EnumerateEVarsPredicate : EnumerateEVars Predicate := {
-list_evars p := match p with
-| P n s args => Vector.fold_left (fun l' => fun (arg : Term) => insert_merge (list_evars arg) l') []%list args
-end
-}.
-
-Theorem list_evars_predicate_sorted : forall (p : Predicate),
-  sorted (list_evars p).
-Proof. intros.
-  destruct p.
-  rename t into args.
-  unfold list_evars; unfold EnumerateEVarsPredicate.
-  apply insert_merge_vector_fold_sorted2.
-  apply sorted_nil.
-Qed.
-
-Global Instance EnumerateEVarsRadix : EnumerateEVars Radix := {
-list_evars R := match R with
-| Ast => []%list
-| Mode n s args => Vector.fold_left (fun l' => fun (arg : Term) => insert_merge (list_evars arg) l') []%list args
-end
-}.
-
-Theorem list_evars_radix_sorted : forall (R : Radix),
-  sorted (list_evars R).
-Proof.
-  intros.
-  induction R.
-  - simpl; auto. apply sorted_nil.
-  - rename t into args.
-    unfold list_evars; unfold EnumerateEVarsRadix.
-    apply insert_merge_vector_fold_sorted2.
-    apply sorted_nil.
-Qed.
-
-Global Instance EnumerateEVarsAttribute : EnumerateEVars Attribute := {
-list_evars attr := match attr with
-| Attr n s args => Vector.fold_left (fun l' => fun (arg : Term) => insert_merge (list_evars arg) l') []%list args
-end
-}.
-
-Theorem list_evars_attribute_sorted : forall (A : Attribute),
-  sorted (list_evars A).
-Proof. intros. destruct A. rename t into args.
-  unfold list_evars; unfold EnumerateEVarsAttribute.
-  apply insert_merge_vector_fold_sorted2.
-  apply sorted_nil.
-Qed.
-
-Global Instance EnumerateEVarsAdjective : EnumerateEVars Adjective := {
-list_evars adj := match adj with
-| Pos a => list_evars a
-| Neg a => list_evars a
-end
-}.
-
-Theorem list_evars_adjective_sorted : forall (A : Adjective),
-  sorted (list_evars A).
-Proof. intros. destruct A.
-  - assert(list_evars (Pos a) = list_evars a). { simpl; auto. }
-    rewrite H.
-    apply list_evars_attribute_sorted.
-  - assert(list_evars (Neg a) = list_evars a). { simpl; auto. }
-    rewrite H.
-    apply list_evars_attribute_sorted.
-Qed.
-
-Global Instance EnumerateEVarsSoftType : EnumerateEVars SoftType := {
-list_evars T := match T with
-| (adjectives,T) => List.fold_left (fun l' => fun (adj : Adjective) => insert_merge (list_evars adj) l')
- adjectives (list_evars T)
-end
-}.
-
-Theorem list_evars_soft_type_sorted : forall (T : SoftType),
-  sorted (list_evars T).
-Proof. intros. destruct T.
-  assert (sorted (list_evars r)). { apply list_evars_radix_sorted. }
-  unfold list_evars; unfold EnumerateEVarsSoftType.
-  apply insert_merge_list_fold_sorted2 with (init := list_evars r).
-  assumption.
-Qed.
-
-Global Instance EnumerateEVarsJudgementType : EnumerateEVars JudgementType := {
-list_evars Judg := match Judg with
-| CorrectContext => []%list
-| Esti t T => insert_merge (list_evars t) (list_evars T)
-| Subtype T1 T2 => insert_merge (list_evars T1) (list_evars T2)
-| Inhabited T => list_evars T
-| HasAttribute a T => insert_merge (list_evars a) (list_evars T)
-end
-}.
-
-Theorem list_evars_judgement_type_sorted : forall (j : JudgementType),
-  sorted (list_evars j).
-Proof.
-  intros. induction j.
-  - unfold list_evars; unfold EnumerateEVarsJudgementType. apply sorted_nil.
-  - unfold list_evars; unfold EnumerateEVarsJudgementType.
-    assert (sorted (list_evars s)). { apply list_evars_soft_type_sorted. }
-    apply insert_merge_sorted2. assumption.
-  - unfold list_evars; unfold EnumerateEVarsJudgementType.
-    assert (sorted (list_evars s0)). { apply list_evars_soft_type_sorted. }
-    apply insert_merge_sorted2. assumption.
-  - unfold list_evars; unfold EnumerateEVarsJudgementType.
-    assert (sorted (list_evars s)). { apply list_evars_soft_type_sorted. }
-    assumption.
-  - unfold list_evars; unfold EnumerateEVarsJudgementType.
-    assert (sorted (list_evars s)). { apply list_evars_soft_type_sorted. }
-    apply insert_merge_sorted2. assumption.
-Qed.
-
-Definition evars_local_declaration (d : Decl) :=
-  match d with
-  | (_, T) => (list_evars T)
-  end.
-
-Global Instance EnumerateEVarsLocalContext : EnumerateEVars LocalContext := {
-list_evars lc := List.fold_left (fun l' => fun (d : Decl) => 
-  insert_merge (evars_local_declaration d) l')
- lc []%list
-}.
-
-Theorem list_evars_local_context_sorted : forall (lc : LocalContext),
-  sorted (list_evars lc).
-Proof. intros.
-  unfold list_evars; unfold EnumerateEVarsLocalContext.
-  apply insert_merge_list_fold_sorted. apply sorted_nil.
-Qed.
-
-Definition list_evars_gc_def (d : LocalContext * JudgementType) :=
-match d with
-  | (lc, T) => insert_merge (list_evars lc) (list_evars T)
-  end.
-
-Global Instance EnumerateEVarsGlobalContext : EnumerateEVars GlobalContext := {
-list_evars gc := List.fold_left (fun l' => fun d => 
-  insert_merge (list_evars_gc_def d)  l')
- gc []%list
-}.
-
-Theorem list_evars_global_context_sorted : forall (gc : GlobalContext),
-  sorted (list_evars gc).
-Proof.
-  intros.
-  unfold list_evars; unfold EnumerateEVarsGlobalContext.
-  apply insert_merge_list_fold_sorted. apply sorted_nil.
-Qed.
-
-Global Instance EnumerateEVarsJudgement : EnumerateEVars Judgement := {
-list_evars j := match j with
-| (gc,lc,judge) => insert_merge (list_evars gc) (insert_merge (list_evars lc) (list_evars judge))
-end
-}.
-
-Theorem list_evars_judgement_sorted : forall (j : Judgement),
-  sorted (list_evars j).
-Proof. intros. destruct j.
-  unfold list_evars; unfold EnumerateEVarsJudgement.
-  assert (sorted (list_evars j)). { apply list_evars_judgement_type_sorted. }
-  destruct p.
-  assert (sorted (insert_merge (list_evars l) (list_evars j))). {
-    apply insert_merge_sorted2; assumption.
-  }
-  apply insert_merge_sorted2; assumption.
-Qed.
-
-Fixpoint list_evars_formula (phi : Formula) : list nat :=
-match phi with
-| Falsum => []%list
-| Atom pred => list_evars pred
-| And fm1 fm2 | Or fm1 fm2 | Implies fm1 fm2 => insert_merge (list_evars_formula fm1) (list_evars_formula fm2)
-| Exists fm => (list_evars_formula fm)
-end.
-
-Global Instance EnumerateEVarsFormula : EnumerateEVars Formula := {
-list_evars := list_evars_formula
-}. 
-
-Theorem list_evars_formula_sorted : forall (phi : Formula),
-  sorted (list_evars phi).
-Proof. intros. induction phi.
-- simpl; auto. apply sorted_nil.
-- unfold list_evars; unfold EnumerateEVarsFormula. apply list_evars_predicate_sorted.
-- unfold list_evars; unfold EnumerateEVarsFormula.
-  apply insert_merge_sorted2; assumption.
-- unfold list_evars; unfold EnumerateEVarsFormula.
-  apply insert_merge_sorted2; assumption.
-- unfold list_evars; unfold EnumerateEVarsFormula.
-  apply insert_merge_sorted2; assumption.
-- simpl; auto.
-Qed.
-
-Global Instance EnumerateEVarsFormulaList : EnumerateEVars (list Formula) := {
-list_evars Γ := (List.fold_left (fun l' => fun (phi : Formula) => insert_merge (list_evars phi) l')
- Γ []%list)
-}. 
-
-Theorem list_evars_formula_list_sorted : forall (l : list Formula),
-  sorted (list_evars l).
-Proof.
-  intros. unfold list_evars; unfold EnumerateEVarsFormulaList.
-  apply insert_merge_list_fold_sorted. apply sorted_nil.
-Qed.
 
 Definition fresh_evar_counter (Γ : list Formula) (p : Formula) : nat :=
 first_new 0 (list_evars (p::Γ)%list).
@@ -617,47 +53,6 @@ Lemma fresh_evar_body : forall (Γ : list Formula) (p : Formula),
   fresh (fresh_evar Γ p) p.
 Admitted.
 *)
-
-(** The alternate approach is that fresh existential variables will be [0],
-and when we introduce one, we [shift_evars] in the related formulas. *)
-Class ShiftEvars A := {
-  shift_evars : A -> A
-}.
-
-Fixpoint shift_evars_term (t : Term) : Term :=
-match t with
-| Var _ => t
-| EConst n => EConst (S n)
-| Fun f args => Fun f (Vector.map shift_evars_term args)
-end.
-
-Global Instance ShiftEvarsTerm : ShiftEvars Term := {
-shift_evars := shift_evars_term
-}.
-
-Global Instance ShiftEvarsPredicate : ShiftEvars Predicate := {
-shift_evars p := match p with
-| P n s args => P n s (Vector.map shift_evars args)
-end
-}.
-
-Fixpoint shift_evars_formula (phi : Formula) : Formula :=
-match phi with
-| Falsum => phi
-| Atom pred => Atom (shift_evars pred)
-| And fm1 fm2 => And (shift_evars_formula fm1) (shift_evars_formula fm2)
-| Or fm1 fm2 => Or (shift_evars_formula fm1) (shift_evars_formula fm2)
-| Implies fm1 fm2 => Implies (shift_evars_formula fm1) (shift_evars_formula fm2)
-| Exists fm => Exists (shift_evars_formula fm)
-end.
-
-Global Instance ShiftEvarsFormula : ShiftEvars Formula := {
-  shift_evars := shift_evars_formula
-}.
-
-Global Instance ShiftEvarsListFormula : ShiftEvars (list Formula) := {
-  shift_evars Γ := List.map shift_evars Γ
-}.
 
 (** Note: I think we need to modify our rules of inference so that modus ponens
 has the side condition that in [Implies p q] either [p] is a sentence (i.e.,
@@ -804,7 +199,7 @@ Lemma empty_subcontext {Γ} :
   [] ⊆ Γ.
 Proof.
   intros.
-  unfold subcontext. intros. absurd (In P0 []). apply in_nil. assumption.
+  unfold subcontext. intros. absurd (In P []). apply in_nil. assumption.
 Qed.
 
 Lemma cons_subcontext : forall (Γ : list Formula) (P : Formula),
@@ -848,19 +243,19 @@ Lemma subcontext_trans : forall (Γ1 Γ2 Γ3 : list Formula),
 Proof.
   intros. unfold subcontext in H; unfold subcontext in H0; unfold subcontext. auto.
 Qed.
-  
+
 Lemma subcontext_weaken : forall (Γ1 Γ2 : list Formula) (P : Formula),
   Γ1 ⊆ Γ2 -> Γ1 ⊆ P :: Γ2.
 Proof.
-  intros. assert (Γ2 ⊆ (List.cons P0 Γ2)). apply cons_subcontext.
-  apply (subcontext_trans Γ1 Γ2 (P0 :: Γ2)) in H0. assumption. assumption.
+  intros. assert (Γ2 ⊆ (List.cons P Γ2)). apply cons_subcontext.
+  apply (subcontext_trans Γ1 Γ2 (P :: Γ2)) in H0. assumption. assumption.
 Qed.
   
 Lemma subcontext_weaken2 : forall (Γ1 Γ2 : list Formula) (P : Formula),
   Γ1 ⊆ Γ2 -> P :: Γ1 ⊆ P :: Γ2.
 Proof.
-  intros. assert (Γ2 ⊆ (List.cons P0 Γ2)). apply cons_subcontext.
-  apply subcontext_cons. split; unfold List.In; auto. apply (subcontext_trans Γ1 Γ2 (P0 :: Γ2)).
+  intros. assert (Γ2 ⊆ (List.cons P Γ2)). apply cons_subcontext.
+  apply subcontext_cons. split; unfold List.In; auto. apply (subcontext_trans Γ1 Γ2 (P :: Γ2)).
   assumption. assumption.
 Qed.
 
@@ -889,7 +284,7 @@ Lemma fresh_in_head : forall {c P Γ1 Γ2},
   fresh c Γ2 -> fresh c P.
 Proof.
   intros. simpl; auto.
-  assert (In P0 Γ2). { apply subcontext_cons in H; destruct H; assumption. }
+  assert (In P Γ2). { apply subcontext_cons in H; destruct H; assumption. }
   unfold fresh in H0; unfold FreshContext in H0.
   apply (List.Forall_forall) with (P := (fun fm : Formula => fresh c fm)) in H1 as H2.
   simpl; auto. simpl; auto.
@@ -979,9 +374,9 @@ intros Γ₁ Γ₂ ? P Q [] ?. revert Γ₂ H. induction H0; intros.
   - apply IHdeducible2. f_equiv. assumption.
   - apply IHdeducible3. f_equiv. assumption.
 + apply ND_and_intro; auto.
-+ apply (ND_and_elim (P := P0) (Q := Q0)); auto.
++ apply (ND_and_elim (P := P) (Q := Q0)); auto.
   apply IHdeducible2. do 2 f_equiv; assumption.
-+ apply (ND_cut (P := P0)); auto.
++ apply (ND_cut (P := P)); auto.
   apply IHdeducible2. f_equiv. assumption.
 + apply (ND_exists_intro (p := p) (t := t)); auto.
 + apply subcontext_cons in H1 as H2. destruct H2.
@@ -1017,25 +412,25 @@ we will be proving results in classical logic.
 Theorem ND_and_idempotent : forall (P : Formula),
   [] ⊢ (And P P) <-> [] ⊢ P.
 Proof. split. (* intros; split. *)
-- intros. apply (@ND_and_elim [] P0 P0 P0). assumption.
+- intros. apply (@ND_and_elim [] P P P). assumption.
   apply ND_assume. unfold In. left. reflexivity.
-- intros. apply (@ND_and_intro [] P0 P0). assumption. assumption.
+- intros. apply (@ND_and_intro [] P P). assumption. assumption.
 Qed.
 
 Theorem ND_or_idempotent : forall (P : Formula),
   [] ⊢ (Or P P) <-> [] ⊢ P.
 Proof. split. 
-- intros. apply (@ND_proof_by_cases [] P0 P0 P0). assumption.
-  Assume (P0 :: [] ⊢ P0); assumption. 
-  Assume (P0 :: [] ⊢ P0); assumption.
-- intros. apply (@ND_or_intro_r [] P0 P0). assumption.
+- intros. apply (@ND_proof_by_cases [] P P P). assumption.
+  Assume (P :: [] ⊢ P); assumption. 
+  Assume (P :: [] ⊢ P); assumption.
+- intros. apply (@ND_or_intro_r [] P P). assumption.
 Qed.
 
 Theorem ND_implies_refl : forall (P : Formula),
   proves (Implies P P).
 Proof. intros.
-  set (Γ := [P0]).
-  assert (In P0 Γ). { unfold In. left. reflexivity. }
+  set (Γ := [P]).
+  assert (In P Γ). { unfold In. left. reflexivity. }
   apply ND_assume in H.
   apply ND_imp_i2 in H. assumption.
 Qed.
