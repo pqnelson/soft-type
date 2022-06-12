@@ -12,9 +12,8 @@ Require Export Morphisms.
 Require Import List.
 Import ListNotations.
 Open Scope string_scope.
-From ST Require Import EVarsScratchwork Vector SoftType.
+From ST Require Import EVarsScratchwork Vector.
 From ST Require Export Logic.V Logic.Term Logic.Predicate Logic.Formula Logic.Subcontext.
-
 Import VectorNotations.
 (** * Natural Deduction
 

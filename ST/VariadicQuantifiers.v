@@ -13,7 +13,6 @@ Require Import List.
 Import ListNotations.
 Open Scope string_scope.
 From ST Require Import Vector.
-From ST Require Import SoftType.
 From ST Require Import EVarsScratchwork Vector Logic.
 Import VectorNotations.
 
