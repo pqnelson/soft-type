@@ -261,3 +261,21 @@ Global Instance ShiftEvarsFormula : ShiftEvars Formula := {
 Global Instance ShiftEvarsListFormula : ShiftEvars (list Formula) := {
   shift_evars Γ := List.map shift_evars Γ
 }.
+
+Definition fresh_evar_counter (Γ : list Formula) (p : Formula) : nat :=
+first_new 0 (list_evars (p::Γ)%list).
+
+Definition fresh_evar (Γ : list Formula) (p : Formula) : Term :=
+EConst (fresh_evar_counter Γ p).
+
+(* TODO: these next two results should be proven, but I am lazy. *)
+Lemma fresh_evar_context : forall (Γ : list Formula) (p : Formula),
+  fresh (fresh_evar Γ p) Γ.
+Admitted.
+
+(* Exercise: Prove the following.
+
+Lemma fresh_evar_body : forall (Γ : list Formula) (p : Formula),
+  fresh (fresh_evar Γ p) p.
+Admitted.
+*)
