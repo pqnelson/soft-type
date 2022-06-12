@@ -32,14 +32,15 @@ constructs, things like [eqb] for boolean equality testing, and [subst] for
 substituting a [Term] for a [V]ariable.
 *)
 
-(** Exercise:
+(** Exercise #1.
 Extend this definition to make [eqb] a proper equivalence relation, specifically:
 
 - [eqb_refl : forall (a : A), eqb a a = true]
 - [eqb_sym : forall (a b : A), eqb a b = eqb b a]
 - [eqb_trans : forall (a b c : A), eqb a b = eqb b c -> eqb a c]
 
-Exercise: Extend this definition to include
+Exercise #2.
+Extend this definition to include
 - [eqb_eq : forall (a b : A), eqb a b = true <-> a = b]
 - [eqb_neq : forall (a b : A), eqb a b = false <-> a <> b] 
 *)
