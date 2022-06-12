@@ -439,14 +439,14 @@ Proof.
     apply insert_merge_sorted2. assumption.
 Qed.
 
-Definition evars_local_declaration (d : Decl) :=
+Definition evars_local_declaration (d : SoftType) :=
   match d with
-  | (_, T) => (list_evars T)
+  | T => (list_evars T)
   end.
 
 Global Instance EnumerateEVarsLocalContext : EnumerateEVars LocalContext := {
-list_evars lc := List.fold_left (fun l' => fun (d : Decl) => 
-  insert_merge (evars_local_declaration d) l')
+list_evars lc := List.fold_left (fun l' => fun d => 
+  insert_merge (list_evars d) l')
  lc []%list
 }.
 
@@ -1440,6 +1440,33 @@ Proof.
   rewrite H6 in H2.
   apply (@ND_forall_i (Forall (Implies q r) :: Forall (Implies p q) :: Γ) (Implies p r) t) in H2.
   assumption. auto.
+Qed.
+
+Theorem thm_Verum_implies_Verum :
+ proves (Implies Verum Verum).
+Proof.
+  unfold proves; apply ND_imp_i2; apply ND_assume; prove_In.
+Qed.
+
+Theorem ND_and_context {Γ p q r} :
+  (And p q)::Γ ⊢ r <-> p::q::Γ ⊢ r.
+Proof.
+  split.
+- intros. apply ND_imp_i2 in H; apply ND_curry in H.
+  Assume (p :: q :: Γ ⊢ p).
+  assert (Γ ⊆ p :: q :: Γ). { apply subcontext_weaken; apply subcontext_weaken; prove_subcontext. }
+  apply (@weakening Γ (p :: q :: Γ)) in H. 2: assumption.
+  apply (@ND_imp_e (p :: q :: Γ) p (Implies q r)) in H. 2: apply ND_assume; prove_In.
+  apply (@ND_imp_e (p :: q :: Γ) q r) in H. 2: apply ND_assume; prove_In.
+  assumption.
+- intros. apply ND_imp_i2 in H; apply ND_imp_i2 in H. apply ND_uncurry in H.
+  assert (Γ ⊆ (And p q) :: Γ). { apply subcontext_weaken; prove_subcontext. }
+  apply (@weakening Γ ((And p q) :: Γ)) in H. 2: assumption.
+  Assume (And p q :: Γ ⊢ And p q).
+  assert (And p q :: Γ ⊢ Implies (And p q) (And q p)). { apply ND_and_commutative. }
+  apply (@ND_imp_e (And p q :: Γ) (And p q)) in H2. 2: assumption.
+  apply (@ND_imp_e (And p q :: Γ) (And q p)) in H. 2: assumption.
+  assumption.
 Qed.
 
 End ImportantTheorems.

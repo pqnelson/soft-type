@@ -9,6 +9,7 @@ Require Export Morphisms.
 Import ListNotations.
 Open Scope string_scope.
 From ST Require Export SoftType.
+From ST Require Export EVarsScratchwork.
 From ST Require Export Logic.
 Import VectorNotations.
 (** * Translation of Soft Types to First-Order Logic 
@@ -96,8 +97,8 @@ _         __   _                         _                 __       _ _
 Fixpoint translate_antecedent (lc : LocalContext) (j : JudgementType) : Formula :=
 match lc with
 | List.nil => translate j
-| List.cons (_,T) List.nil => Forall (Implies (translate T) (translate j))
-| List.cons (_,T) tl => Forall (Implies (translate T) (translate_antecedent tl j))
+| List.cons T List.nil => Forall (Implies (translate T) (translate j))
+| List.cons T tl => Forall (Implies (translate T) (translate_antecedent tl j))
 end.
 
 Definition translate_definition (defn : LocalContext*JudgementType) : Formula :=
@@ -123,6 +124,94 @@ translate (judge : Judgement) :=
   end
 }.
 
+
+Theorem vacuous_translations_provable :
+  forall (judgement : Judgement),
+  Verum = translate (Judgement_body judgement) -> proves (translate judgement).
+Admitted.
+(*
+Proof.
+  intros.
+  destruct judgement. destruct p.
+  unfold translate; unfold TranslatableJudgement.
+  unfold proves; apply ND_imp_i2.
+  unfold Judgement_body in H. set (Γ := translate g).
+  generalize dependent Γ.
+  induction l.
+  - intros. unfold translate_antecedent. rewrite <- H.
+    apply ND_True_intro.
+  - intros. destruct l as [| b l'].
+  + unfold translate_antecedent. rewrite <- H.
+    set (t := fresh_evar [Γ] Falsum).
+    apply (@ND_forall_i [Γ] (Implies (translate a) Verum) t).
+    assert ([Γ] ⊢ subst_bvar_inner 0 t (Implies (translate a) Verum)
+            = [Γ] ⊢ Implies (subst_bvar_inner 0 t (translate a)) Verum). {
+      simpl; auto.
+    }
+    rewrite H0. apply ND_imp_i2; apply ND_True_intro.
+    unfold t; reflexivity.
+  + assert ([Γ] ⊢ translate_antecedent (a :: b :: l')%list j
+            = [Γ] ⊢ Forall (Implies (translate a) (translate_antecedent (b :: l')%list j))). {
+      unfold translate_antecedent; simpl; auto.
+    }
+    rewrite H0.
+    set (t := fresh_evar [Γ] Falsum).
+    apply (@ND_forall_i [Γ] (Implies (translate a) (translate_antecedent (b :: l')%list j)) t).
+    2: unfold t; reflexivity.
+    assert ([Γ] ⊢ subst_bvar_inner 0 t (Implies (translate a) (translate_antecedent (b :: l')%list j))
+          = [Γ] ⊢ Implies (subst_bvar_inner 0 t (translate a)) (subst_bvar_inner 0 t (translate_antecedent (b :: l')%list j))). {
+      simpl; auto.
+    }
+    rewrite H1.
+    apply ND_imp_i2.
+    apply ND_and_context. 
+    assert([And (subst_bvar_inner 0 t (translate a)) Γ] ⊢ translate_antecedent (b :: l')%list j). {
+      apply (@IHl (And (subst_bvar_inner 0 t (translate a)) Γ)).
+    }
+    forall Γ : Formula,
+      [Γ] ⊢ translate_antecedent (b :: l')%list j
+unfold translate_antecedent. rewrite <- H.
+*)
+
+(*
+Global Instance TranslatableJudgementType : Translatable JudgementType := {
+  translate (J : JudgementType) := 
+  match J with
+  | Esti tm Tp => quantifier_elim_subst 0 tm (translate Tp)
+  | Subtype T1 T2 => match (translate T1), (translate T2) with
+                     | A1, A2 => Forall (Implies A1 A2)
+                     end
+  | Inhabited T => Exists (translate T)
+  | _ => Verum
+  end
+}.
+*)
+
+Corollary correct_contexts_are_trivial : forall (gc : GlobalContext) (lc : LocalContext),
+  proves (translate (gc, lc, CorrectContext)).
+Proof.
+  intros.
+  set (j := (gc ;; lc |- CorrectContext)).
+  assert (Judgement_body j = CorrectContext). simpl; auto.
+  assert (translate CorrectContext = Verum). simpl; auto.
+  apply vacuous_translations_provable. symmetry; assumption.
+Qed.
+
+Corollary has_attributes_are_trivial : forall (gc : GlobalContext) (lc : LocalContext) a T,
+  proves (translate (gc, lc, HasAttribute a T)).
+Proof.
+  intros.
+  set (j := (gc ;; lc |- HasAttribute a T)).
+  assert (Judgement_body j = HasAttribute a T). simpl; auto.
+  assert (translate (HasAttribute a T) = Verum). simpl; auto.
+  apply vacuous_translations_provable. symmetry; assumption.
+Qed.
+
+(**
+In effect, we only need to prove correctness for the translations of
+judgement types  [Esti tm Tp], [Subtype T1 T2], and [Inhabited T].
+*)
+
 (** * Main Results
 
 We can now articulate the correctness results. *)
@@ -139,7 +228,7 @@ Hint Constructors JudgementType Radix Term Adjective Predicate Formula : typecla
 Lemma empty_context_correctness :
   well_typed (List.nil ;; List.nil |- CorrectContext) -> proves (translate (List.nil ;; List.nil |- CorrectContext)).
 Proof. 
-  intros; simpl; apply Verum_implies_Verum.
+  intros; simpl; apply thm_Verum_implies_Verum.
 Qed.
 
 Hint Unfold GlobalContext LocalContext : typeclass_instances.
@@ -178,7 +267,7 @@ Theorem correctness : forall (J : Judgement),
 Proof.
   intros.
   induction H.
-  - intros; simpl; apply Verum_implies_Verum. (* Γ ;; Δ |- CorrectContext *)
-  - intros. simpl. (* Γ;; push (x, T) Δ |- CorrectContext *)
+  - intros; simpl; apply thm_Verum_implies_Verum. (* Γ ;; Δ |- CorrectContext *)
+  - apply correct_contexts_are_trivial. (* Γ;; push (x, T) Δ |- CorrectContext *)
   (* ... and the rest! *)
 Qed.

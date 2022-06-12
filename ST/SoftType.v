@@ -3,12 +3,15 @@ Require Import List.
 Require Import Nat.
 Require Import Coq.Vectors.Vector.
 Require Export Coq.Arith.Compare_dec.
+Require Import Coq.Arith.PeanoNat.
 Require Export List.
 Require Export RelationClasses.
 Require Export Morphisms.
+From ST Require Export EVarsScratchwork.
 Import ListNotations.
 Import VectorNotations.
 Open Scope string_scope.
+
 
 (* TODO: re-do the local context so that it meshes with locally nameless
 variables correctly. *)
@@ -66,8 +69,6 @@ Global Instance VEq : Eq V := {
   | _, _ => false
   end
 }.
-
-Require Import Coq.Arith.PeanoNat.
 
 Lemma V_eq_dec : forall a b : V, {a = b} + {a <> b}.
 Proof. decide equality.
@@ -159,6 +160,13 @@ match t1,t2 with
 | _, _ => false
 end.
 
+Fixpoint map_vars_term (f : V -> V) (t : Term) : Term :=
+match t with
+| Var x => Var (f x)
+| EConst _ => t
+| Fun s args => Fun s (Vector.map (map_vars_term f) args)
+end.
+
 Global Instance EqTerm : Eq Term := {
   eqb := term_eqb
 }.
@@ -225,12 +233,8 @@ Proof.
   trivial.
 Qed.
 
-Fixpoint tlift (c d : nat) (t : Term) : Term :=
-match t with
-| Var y => Var (lift c d y)
-| Fun f args => Fun f (Vector.map (fun (a : Term) => tlift c d a) args)
-| EConst _ => t
-end.
+Definition tlift (c d : nat) (t : Term) : Term :=
+map_vars_term (lift c d) t.
 
 Global Instance liftTerm : Lift Term :=
 {
@@ -466,17 +470,21 @@ a list of [Decl].
 TODO 2: Think hard about whether lifting is necessary for local contexts.
 *)
 Definition Decl : Type := V*SoftType.
-Definition LocalContext := list Decl.
+Definition LocalContext := list SoftType.
 
 (**
 Given a [LocalContext], we can turn it into a vector of variables, to be used as
 the arguments for a [Term], [Attribute], or [SoftType] (or whatever).
 *)
-Fixpoint local_vars (lc : LocalContext) : Vector.t Term (List.length lc) :=
-  match lc with
-  | List.cons (x,_) tl => (Var x)::(local_vars tl)
-  | List.nil => []
-  end.
+Definition local_vars (lc : LocalContext) : Vector.t Term (List.length lc) :=
+  Vector.map (fun (n : nat) => Var (BVar n))
+  (rev_nat_range_vector (length lc)).
+
+Example local_vars_3 :
+  (local_vars [Star; Star; Star]%list) = [Var (BVar 2); Var (BVar 1); Var (BVar 0)].
+Proof.
+  simpl; auto.
+Qed.
 
 (* Helper function to turn a [nat] into a [string]. *)
 Fixpoint string_of_nat_aux (time n : nat) (acc : string) : string :=
@@ -561,20 +569,25 @@ We can now code up the inference rules for Wiedijk's soft type system inductivel
 *)
 Definition Judgement : Type := GlobalContext * LocalContext * JudgementType.
 
+Definition Judgement_body (j : Judgement) :=
+match j with
+| (_,_, body) => body
+end.
+
 Definition push {A : Type} (a : A) (l : list A) : list A :=
   List.app l (List.cons a List.nil).
 
 Notation "gc ;; lc |- j" := (gc, lc, j) (at level 80).
 Inductive well_typed : Judgement -> Prop :=
 | wt_empty_context : well_typed (List.nil ;; List.nil |- CorrectContext)
-| wt_var : forall (Γ : GlobalContext) (Δ : LocalContext) (x : V) (T : SoftType) (J : JudgementType),
+| wt_var : forall (Γ : GlobalContext) (Δ : LocalContext) (T : SoftType) (J : JudgementType),
   well_typed (Γ ;; Δ |- Inhabited T) ->
-  well_typed (Γ ;; (push (x,T) Δ) |- CorrectContext)
+  well_typed (Γ ;; (push T Δ) |- CorrectContext)
 (* TODO: substitution rule for a vector of declarations *)
-| wt_subst : forall (Γ : GlobalContext) (Δ : LocalContext) (x : V) (t : Term) (T : SoftType) (J : JudgementType),
-  gc_contains Γ ((List.cons (x,T) List.nil), J) ->
+| wt_subst : forall (Γ : GlobalContext) (Δ : LocalContext) (t : Term) (T : SoftType) (J : JudgementType),
+  gc_contains Γ ((List.cons T List.nil), J) ->
   well_typed (Γ ;; Δ |- Esti t T) ->
-  well_typed (Γ ;; Δ |- (subst x t J))
+  well_typed (Γ ;; Δ |- (subst (BVar 0) t J))
 (* TODO: inhabited types produce new local variables *)
 | wt_subtype_star_star : forall (Γ : GlobalContext) (Δ : LocalContext),
   well_typed (Γ ;; Δ |- CorrectContext) ->

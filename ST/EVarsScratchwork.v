@@ -1133,3 +1133,407 @@ Proof.
     rewrite H1; rewrite H0. apply IHl. assumption.
 Qed.
 
+
+(** * Segments -- range of integers 
+
+At present, it seems like I will need to use a consecutive,
+finite sequence of natural numbers. I defined it as a 
+fixpoint, then proved a number of useful theorems about it.
+*)
+Fixpoint nat_range_list (n : nat) : list nat :=
+match n with
+| 0 => []%list
+| S n' => ((nat_range_list n') ++ [n'])%list
+end.
+
+Check (nat_range_list 3).
+
+Lemma test_works2 :
+  [0;1;2]%list = nat_range_list 3.
+Proof. unfold nat_range_list.
+  simpl; auto.
+Qed.
+
+Lemma nat_range_list_ind :
+  forall (n : nat), 
+  nat_range_list (S n) = ((nat_range_list n) ++ [n])%list.
+Proof.
+  intros. induction n.
+  - unfold nat_range_list; simpl; auto.
+  - unfold nat_range_list; simpl; auto.
+Qed.
+
+Require Import Lia.
+
+Theorem nat_range_list_length :
+  forall (n : nat), length (nat_range_list n) = n.
+Proof.
+  intros. induction n.
+  - unfold nat_range_list; simpl; auto.
+  - assert (nat_range_list (S n) = ((nat_range_list n) ++ [n])%list). {
+      apply nat_range_list_ind.
+    }
+    rewrite H. 
+    assert (length (nat_range_list n ++ [n]) = (length (nat_range_list n)) + (length [n]%list)). {
+      apply List.app_length.
+    } 
+    rewrite H0. rewrite IHn. unfold length. lia.
+Qed.
+
+Lemma nth_cons :
+  forall {A} (n : nat) (l : list A) (a default : A),
+  nth (S n) (a::l) default = nth n l default.
+Proof. intros.
+  induction l.
+  - unfold nth; simpl; auto.
+  - unfold nth; simpl; auto.
+Qed.
+
+Lemma last_nth :
+  forall {A} (n n' : nat) (l : list A) (default : A),
+  S n' = n -> n = length l -> List.nth n' l default = List.last l default.
+Proof.
+  intros. generalize dependent n'. generalize dependent n. induction l.
+  - intros. unfold length in H0. rewrite H0 in H. contradict H. unfold length; simpl; auto.
+  - intros. destruct l.
+  + unfold length in H0. rewrite H0 in H.
+    assert (n' = 0). lia.
+    rewrite H1. unfold nth; unfold last; simpl; auto.
+  + set (n'' := length l).
+    assert (S n'' = length (a0 :: l)). { unfold length; simpl; auto; lia. }
+    assert (S (S n'') = length (a :: a0 :: l)). { unfold length; simpl; auto; lia. }
+    
+    assert (S (S n'') = n). { lia. }
+    assert (S n'' = n'). { lia. }
+    assert (n' = length (a0 :: l)). lia.
+    rewrite <- H4.
+    assert(last (a :: a0 :: l) default = last (a0 :: l) default). {
+      simpl; auto. 
+    }
+    rewrite H6.
+    assert (nth (S n'') (a :: a0 :: l) default = nth n'' (a0 :: l) default). {
+      simpl; auto.
+    }
+    rewrite H7.
+    apply (IHl n'). assumption. assumption.
+Qed.
+
+Lemma nat_range_list_incl_end :
+  forall (n : nat),
+  List.incl (nat_range_list n) (nat_range_list (S n)).
+Proof.
+  intros.
+  induction n.
+  - unfold nat_range_list; simpl; auto. unfold incl; simpl; auto.
+  - set (m := S n).
+    assert (nat_range_list m = (nat_range_list n ++ [n])%list). {
+      unfold nat_range_list; unfold m; simpl; auto.
+    }
+    assert (nat_range_list (S m) = (nat_range_list m ++ [m])%list). {
+      unfold nat_range_list; unfold m; simpl; auto.
+    }
+    assert (nat_range_list (S m) = (nat_range_list n ++ [n; m])%list). {
+      rewrite H0.
+      rewrite H. symmetry. apply (List.app_assoc (nat_range_list n) ([n]%list) ([m]%list)).
+    }
+    rewrite H1. rewrite H.
+    assert (incl [n]%list [n; m]%list). { unfold incl; simpl; auto.
+      intros. destruct H2. left; simpl; auto. simpl; auto.
+    }
+    apply List.incl_app_app; simpl; auto.
+    apply List.incl_refl.
+Qed.
+
+Theorem nat_range_list_incl :
+  forall (m n : nat),
+  m < n -> List.incl (nat_range_list m) (nat_range_list n).
+Proof.
+  intros. generalize dependent m.
+  induction n.
+  - intros. contradict H; lia.
+  - intros. 
+    assert (incl (nat_range_list n) (nat_range_list (S n))). {
+      apply nat_range_list_incl_end.
+    }
+    assert ({m = n} + {m <> n}). decide equality.
+    destruct H1.
+  + rewrite e. assumption.
+  + assert (m < n). { lia. }
+    assert (incl (nat_range_list m) (nat_range_list n)). {
+      apply IHn. assumption.
+    }
+    apply (@incl_tran nat (nat_range_list m) (nat_range_list n) (nat_range_list (S n))).
+    assumption.
+    assumption.
+Qed.
+
+Theorem nat_range_list_firstn :
+  forall (m n : nat),
+  m < n -> List.firstn m (nat_range_list n) = nat_range_list m.
+Proof.
+  intros. generalize dependent m.
+  induction n.
+  - intros. contradict H; lia.
+  - intros. 
+    assert({m = n} + {m <> n}). decide equality.
+    assert(nat_range_list (S n) = (nat_range_list n ++ [n])%list). {
+      unfold nat_range_list; simpl; auto.
+    }
+    destruct H0.
+  + rewrite e. rewrite H1.
+    set (l := nat_range_list n).
+    assert (n = length l). { symmetry. apply nat_range_list_length. }
+    assert (firstn (length l + 0) (l ++ [n])%list = l). {
+      assert (firstn 0 [n]%list = List.nil). { simpl; auto. }
+      assert (l = (l ++ (firstn 0 [n]%list))%list). { simpl; auto. symmetry. apply app_nil_r. }
+      set (l2 := firstn (length l + 0) (l ++ [n])%list).
+      rewrite H3. unfold l2.
+      apply (@firstn_app_2 nat 0 l ([n])%list).
+    }
+    assert (length l + 0 = length l). { simpl; auto. }
+    rewrite H3 in H2. rewrite <- H0 in H2. assumption.
+  + assert (m < n) as IH. lia.
+    apply IHn in IH.
+    destruct m as [| m'].
+ ++ (* m = 0 *)
+    apply firstn_O.
+ ++ (* m = S m' *)
+    set (l := skipn (S m') (nat_range_list n)).
+    assert (nat_range_list n = (nat_range_list (S m') ++ l)%list). {
+      symmetry. rewrite <- IH. unfold l.
+      apply (@firstn_skipn nat (S m') (nat_range_list n)).
+    }
+    assert (nat_range_list (S n) = ((nat_range_list (S m') ++ l) ++ [n])%list). {
+      rewrite <- H0. rewrite H1. reflexivity.
+    }
+    rewrite H2.
+    assert (((nat_range_list (S m') ++ l) ++ [n])%list 
+            = (nat_range_list (S m') ++ (l ++ [n]))%list). {
+      symmetry. apply app_assoc.
+    }
+    rewrite H3.
+    set (l' := (l ++ [n])%list).
+    assert (length (nat_range_list (S m')) = S m'). {
+      apply nat_range_list_length.
+    }
+    assert (firstn (length (nat_range_list (S m')) + 0) (nat_range_list (S m') ++ l')%list =
+            ((nat_range_list (S m')) ++ firstn 0 l')%list). {
+      apply (@firstn_app_2 nat 0).
+    }
+    rewrite H4 in H5.
+    assert ((nat_range_list (S m') ++ firstn 0 l')%list = nat_range_list (S m')). {
+      assert (firstn 0 l' = []%list). simpl; auto.
+      rewrite H6.
+      apply app_nil_r.
+    } rewrite H6 in H5.
+    assert (firstn (S m' + 0)
+       (nat_range_list (S m') ++ l') = firstn (S m')
+       (nat_range_list (S m') ++ l')). { assert(S m' + 0 = S m').
+       simpl; auto. rewrite H7. reflexivity.
+    }
+    rewrite H7 in H5. assumption.
+Qed.
+
+Theorem nat_range_list_entry :
+  forall (k n : nat),
+  k < n -> nth k (nat_range_list n) (S n) = k.
+Proof.
+  intros. generalize dependent k.
+  induction n as [|n'].
+  - intros. contradict H. lia.
+  - intros. set (n := S n').
+    assert (nat_range_list n = (nat_range_list n' ++ [n'])%list). {
+      simpl; auto.
+    }
+    assert ({k = n'} + {k <> n'}). decide equality.
+    destruct H1.
+  + (* Case: k = n' *)
+    assert (nth k (nat_range_list (S k)) (S (S k)) = last (nat_range_list (S k)) (S (S k))). {
+      apply (@last_nth nat n k). lia.
+      rewrite e. unfold n. symmetry.
+      apply nat_range_list_length.
+    } unfold n. rewrite <- e.
+    rewrite H1.
+    unfold n in H0.
+    rewrite <- e in H0.
+    rewrite H0.
+    apply last_last.
+  + assert (k < n'). lia.
+    assert (length (nat_range_list n') = n'). {
+      apply nat_range_list_length.
+    }
+    apply IHn' in H1 as IH.
+    rewrite H0.
+    assert (nth k (nat_range_list n' ++ [n'])%list (S n') = nth k (nat_range_list n') (S n')). {
+      apply app_nth1 with (d := (S n')). rewrite H2. assumption.
+    }
+    assert (nth k (nat_range_list n' ++ [n']) (S n) = nth k (nat_range_list n' ++ [n']) (S n')). {
+      apply nth_indep.
+      assert (length (nat_range_list n') + 1 = length (nat_range_list n' ++ [n'])). {
+        symmetry. apply app_length.
+      }
+      lia.
+    } rewrite H4.
+    rewrite H3. rewrite IH. reflexivity.
+Qed.
+
+Definition rev_nat_range_list (n : nat) : list nat :=
+  List.rev (nat_range_list n).
+
+Example ex_rev_nat_range_list_4 :
+  rev_nat_range_list 4 = [3;2;1;0]%list.
+Proof.
+  simpl; auto.
+Qed.
+
+Theorem rev_nat_range_list_length : forall (n : nat),
+  length (rev_nat_range_list n) = n.
+Proof.
+  intros.
+  unfold rev_nat_range_list.
+  assert (length (rev (nat_range_list n)) = length (nat_range_list n)). {
+    apply (rev_length (nat_range_list n)).
+  }
+  rewrite H.
+  apply nat_range_list_length.
+Qed.
+
+Check nat_range_list_entry.
+(* 
+  Lemma rev_nth : forall l d n, n < length l ->
+    nth n (rev l) d = nth (length l - S n) l d.
+
+nat_range_list_entry
+     : forall k n : nat,
+       k < n -> nth k (nat_range_list n) (S n) = k
+nth k (rev_nat_range_list n) d
+= nth (n - k) (nat_range_list n) d
+= (n - k)
+*)
+
+Theorem rev_nat_range_list_entry :
+  forall (k n : nat),
+  k < n -> nth k (rev_nat_range_list n) (S n) = (n - S k).
+Proof.
+  intros. unfold rev_nat_range_list.
+  assert (length (nat_range_list n) = n). { apply nat_range_list_length. }
+  assert (nth k (rev (nat_range_list n)) (S n)
+          = nth (length (nat_range_list n) - S k) (nat_range_list n) (S n)). {
+    apply (@rev_nth nat (nat_range_list n) (S n) k).
+    rewrite H0. assumption.
+  } rewrite H0 in H1.
+  assert (nth (n - S k) (nat_range_list n) (S n) = (n - S k)). {
+    apply nat_range_list_entry. lia.
+  } rewrite H1. rewrite H2.
+  reflexivity.
+Qed.
+
+(* Coq thinks [Vector.of_list (rev_nat_range_list n)] is a [Vector]
+of size [length (rev_nat_range_list n)]. So we have to explicitly
+spell it out for Coq. *)
+
+
+Require Fin List.
+Require Import VectorDef PeanoNat Eqdep_dec.
+Import VectorNotations EqNotations.
+Fixpoint rev_nat_range_vector (n : nat) : Vector.t nat n :=
+match n with
+| 0 => []
+| S n' => (n') :: (rev_nat_range_vector n')
+end.
+
+Lemma rev_nat_range_vector_last :
+  forall (n' : nat),
+  Vector.last (rev_nat_range_vector (S n')) = 0.
+Proof.
+  intros. induction n'.
+  - unfold rev_nat_range_vector. simpl; auto.
+  - assert((rev_nat_range_vector (S (S n')))
+            = Vector.cons nat (S n') (S n') (rev_nat_range_vector (S n'))). {
+      simpl; auto.
+    }
+    rewrite H.
+    assert (Vector.last (Vector.cons nat (S n') (S n') (rev_nat_range_vector (S n')))
+            = Vector.last (rev_nat_range_vector (S n'))). {
+      simpl; auto.
+    }
+    rewrite H0. apply IHn'.
+Qed.
+
+Example rev_nat_range_vector_0 :
+  rev_nat_range_vector 0 = [].
+Proof. simpl; auto. Qed.
+
+Example rev_nat_range_vector_1 :
+  rev_nat_range_vector 1 = [0].
+Proof. simpl; auto. Qed.
+
+Example rev_nat_range_vector_2 :
+  rev_nat_range_vector 2 = [1;0].
+Proof. simpl; auto. Qed.
+
+
+Lemma rev_nat_range_vector_hd :
+  forall (n' : nat),
+  Vector.hd (rev_nat_range_vector (S n')) = n'.
+Proof.
+  intros. unfold rev_nat_range_vector. simpl; auto.
+Qed.
+
+Lemma rev_nat_range_vector_tl :
+  forall (n' : nat),
+  Vector.tl (rev_nat_range_vector (S (S n'))) = rev_nat_range_vector (S n').
+Proof.
+  intros. unfold rev_nat_range_vector. simpl; auto.
+Qed.
+
+(* These next two lemmas are true, but I am too stupid to understand
+Coq's inner workings to prove them. *)
+Lemma rev_nat_range_vector_entry_base_case :
+  forall (k : nat) (H : k < 1),
+  nth_order (rev_nat_range_vector 1) H = 1 - S k.
+Admitted.
+
+Lemma rev_nat_range_vector_entry_inductive_case_subtlety :
+  forall (k n : nat) (H : k < S (S n)) (e : k = S n) (H0 : S n < S (S n)),
+  nth_order (rev_nat_range_vector (S (S n))) H 
+  = nth_order (rev_nat_range_vector (S (S n))) H0.
+Admitted.
+
+Theorem rev_nat_range_vector_entry :
+  forall (k n : nat) (H : k < S n),
+  nth_order (rev_nat_range_vector (S n)) H = (S n - S k).
+Proof.
+  intros.
+  generalize dependent k. induction n.
+  - intros. apply rev_nat_range_vector_entry_base_case.
+  - intros. assert({k = S n} + {k <> S n}). decide equality. destruct H0.
+    + assert (S n < S (S n)) as H0. lia.
+      assert (nth_order (rev_nat_range_vector (S (S n))) H 
+              = nth_order (rev_nat_range_vector (S (S n))) H0). {
+        apply rev_nat_range_vector_entry_inductive_case_subtlety. assumption.
+      }
+      rewrite H1. rewrite e.
+      assert (last (rev_nat_range_vector (S (S n))) = 0). {
+        apply rev_nat_range_vector_last.
+      }
+      assert (nth_order (rev_nat_range_vector (S (S n))) H0 = last (rev_nat_range_vector (S (S n)))). {
+        apply (@nth_order_last nat (S n) (rev_nat_range_vector (S (S n)))).
+      }
+      rewrite H3; rewrite H2; lia.
+    + destruct k as [|k'].
+  ++ (* k = 0 *)
+     apply nth_order_hd.
+  ++ (* k = S k' *)
+     set (k := S k'). assert (k' < S n). lia.
+     assert (nth_order (rev_nat_range_vector (S n)) H0 = S n - S k') as IH. {
+        apply (IHn k' H0).
+     }
+     assert (S (S n) - S k = S n - S k'). lia. rewrite H1.
+     rewrite <- IH. symmetry.
+     assert (Vector.tl (rev_nat_range_vector (S (S n))) = rev_nat_range_vector (S n)). {
+       apply rev_nat_range_vector_tl.
+     }
+     rewrite <- H2.
+     apply (@nth_order_tl nat (S n) k' (rev_nat_range_vector (S (S n)))).
+Qed.
