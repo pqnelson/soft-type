@@ -1624,6 +1624,12 @@ Proof.
 Qed.
 End QuantifierTheorems.
 
+Theorem Verum_implies_Verum :
+  proves (Implies Verum Verum).
+Proof.
+  apply ND_imp_i2; apply ND_True_intro.
+Qed.
+
 
 Theorem consistency : not (proves Falsum).
 Proof.

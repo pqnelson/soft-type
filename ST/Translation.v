@@ -9,7 +9,7 @@ Require Export Morphisms.
 Import ListNotations.
 Open Scope string_scope.
 From ST Require Export SoftType.
-From ST Require Export Logic.
+From ST Require Import Logic VariadicQuantifiers.
 Import VectorNotations.
 (** * Translation of Soft Types to First-Order Logic 
 
