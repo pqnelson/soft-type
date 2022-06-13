@@ -32,14 +32,28 @@ Global Instance TranslatableRadix : Translatable Radix := {
   | Mode n M args => (Atom (P (S n) (String.append "Mode_" M) ((Var (BVar 0))::(Vector.map shift args))))
   end
 }.
-  
+
+Example translate_radix_ast :
+  translate (Ast) = Verum.
+Proof. simpl; auto. Qed.
+
+Example translate_radix_mode_1 :
+  translate (Mode 3 "MyMode" [(Var (FVar "x")); (constant "c"); (Var (BVar 3))])
+  = Atom (P 4 "Mode_MyMode" [(Var (BVar 0)); (Var (FVar "x")); (constant "c"); (Var (BVar 4))]).
+Proof. unfold constant; simpl; auto. Qed.
+
 Global Instance TranslatableAttr : Translatable Attribute := {
   translate (attr : Attribute) :=
   match attr with
   | Attr n s args => (Atom (P (S n) (String.append "Attr_" s) ((Var (BVar 0))::(Vector.map shift args))))
   end
 }.
-  
+
+Example translate_attr_1 :
+  translate (Attr 3 "MyMode" [(Var (FVar "x")); (constant "c"); (Var (BVar 3))])
+  = Atom (P 4 "Attr_MyMode" [(Var (BVar 0)); (Var (FVar "x")); (constant "c"); (Var (BVar 4))]).
+Proof. unfold constant; simpl; auto. Qed.
+
 Global Instance TranslatableAdj : Translatable Adjective := {
   translate (adj : Adjective) :=
   match adj with
@@ -48,6 +62,22 @@ Global Instance TranslatableAdj : Translatable Adjective := {
   end
 }.
 
+Example translate_adj_1 :
+  translate (Pos (Attr 3 "SimplyConnected" [(Var (FVar "x")); (constant "c"); (Var (BVar 3))]))
+  = Atom (P 4 "Attr_SimplyConnected" [(Var (BVar 0)); (Var (FVar "x")); (constant "c"); (Var (BVar 4))]).
+Proof. unfold constant; simpl; auto. Qed.
+
+Example translate_adj_2 :
+  translate (Neg (Attr 3 "SimplyConnected" [(Var (FVar "x")); (constant "c"); (Var (BVar 3))]))
+  = Not (Atom (P 4 "Attr_SimplyConnected" [(Var (BVar 0)); (Var (FVar "x")); (constant "c"); (Var (BVar 4))])).
+Proof. unfold constant; simpl; auto. Qed.
+
+Definition null {A} (l : list A) : bool :=
+match l with
+| []%list => true
+| _ => false
+end.
+
 (* Consider: shift everything by 1, and have [BVar 0] reserved for future
 use in translating judgements. *)
 Global Instance TranslatableSoftType : Translatable SoftType := {
@@ -55,12 +85,23 @@ Global Instance TranslatableSoftType : Translatable SoftType := {
   match T with
   | (adjs, R) => let fix tr_adjs (ads : list Adjective) :=
                      match ads with
-                     | List.cons a tl => And (translate a) (tr_adjs tl)
+                     | List.cons a tl => if null tl then translate a else And (translate a) (tr_adjs tl)
                      | List.nil => Verum
                      end
                      in And (tr_adjs adjs) (translate R)
   end
 }.
+
+Example translate_soft_type_1 :
+let st : SoftType := ([Neg (Attr 3 "SimplyConnected" [(Var (FVar "x")); (constant "c"); (Var (BVar 3))]%vector);
+  Pos (Attr 1 "Smooth" [(Var (FVar "y"))]%vector)]%list,
+(Mode 3 "Manifold" [(Var (FVar "x")); (constant "c"); (Var (BVar 3))]))
+in (translate st)
+= And (And (translate (Neg (Attr 3 "SimplyConnected" [(Var (FVar "x")); (constant "c"); (Var (BVar 3))])))
+           (translate (Pos (Attr 1 "Smooth" [(Var (FVar "y"))]))))
+      (translate (Mode 3 "Manifold" [(Var (FVar "x")); (constant "c"); (Var (BVar 3))])).
+Proof. unfold constant; simpl; auto. Qed.
+
 
 Global Instance TranslatableJudgementType : Translatable JudgementType := {
   translate (J : JudgementType) := 
