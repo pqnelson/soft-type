@@ -106,7 +106,7 @@ Proof. unfold constant; simpl; auto. Qed.
 Global Instance TranslatableJudgementType : Translatable JudgementType := {
   translate (J : JudgementType) := 
   match J with
-  | Esti tm Tp => quantifier_elim_subst 0 tm (translate Tp)
+  | Esti tm Tp => subst_bvar_inner 0 tm (translate Tp)
   | Subtype T1 T2 => match (translate T1), (translate T2) with
                      | A1, A2 => Forall (Implies A1 A2)
                      end
@@ -114,6 +114,15 @@ Global Instance TranslatableJudgementType : Translatable JudgementType := {
   | _ => Verum
   end
 }.
+
+Example translate_judgement_1 :
+translate (Esti (Fun "Sphere" [(constant "n")])
+  ([Pos (Attr 0 "Smooth" []%vector); (Pos (Attr 1 "-dimensional" [(constant "n")]%vector))]%list, (Mode 1 "Manifold" [(constant "REAL")])))
+= let sphere : Term := (Fun "Sphere" [(constant "n")])
+  in And (And (Atom (P 1 "Attr_Smooth" [ sphere ]))
+              (Atom (P 2 "Attr_-dimensional" [sphere; Fun "n" []])))
+         (Atom (P 2 "Mode_Manifold" [sphere; Fun "REAL" []])).
+Proof. unfold constant; simpl; auto. Qed.
 
 (** Global definitions are a list of definitions, which are a [LocalContext]
 and a [JudgementType]. There may be a clever way to encode this, but I am at
