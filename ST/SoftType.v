@@ -55,8 +55,6 @@ Proof. intros. destruct j.
   apply insert_merge_sorted2; assumption.
 Qed.
 
-Check subst.
-
 Definition push {A : Type} (a : A) (l : list A) : list A :=
   List.app l (List.cons a List.nil).
 Close Scope string_scope.

@@ -7,7 +7,6 @@ Require Import Coq.Arith.PeanoNat.
 Require Import Lia.
 Import ListNotations.
 
-
 Lemma eqb_reflect : forall x y, reflect (x = y) (x =? y).
 Proof.
   intros x y. apply iff_reflect. symmetry.
@@ -33,7 +32,7 @@ Ltac bdestruct X :=
     [eauto with bdestruct
     | destruct H as [H|H];
        [ | try first [apply not_lt in H | apply not_le in H]]].
-
+#[export]
 Hint Resolve ltb_reflect leb_reflect eqb_reflect : bdestruct.
 
 Lemma eq_list {A} : forall (a : A) (l1 l2 : list A),
@@ -194,7 +193,6 @@ Lemma sorted_head_ge : forall (n a : nat) (l : list nat),
 Proof.
   intros. assert (n = a \/ n > a). lia. inversion H1.
   - (* Case: a = n *)
-    Check insert_eq.
     apply (insert_eq n a l) in H2. rewrite H2. unfold hd_error; reflexivity.
   - (* Case: n > a *)
     apply (insert_gt n a l) in H2. rewrite H2. unfold hd_error; reflexivity.
@@ -281,7 +279,6 @@ Proof.
      ** (* insert n l = n :: l *)
        rewrite <- H13 in H8; rewrite <- H13 in H10; rewrite <- H13 in H9.
        inversion H8. unfold insert in H15. rewrite <- H6 in H15. 
-       Check (sorted_cons a n).
        apply (sorted_cons a n (y :: l0)) in H9. apply H9.
         sorted (a :: n :: y :: l0)
        rewrite H6 in H4b. 
@@ -304,8 +301,6 @@ Proof. intros. induction l1.
      apply (sorted_cons a n l1). assumption. assumption.
   -- apply H1.
 Qed.
-
-Check sorted_head.
 
 Lemma sorted_head_min : forall (n k : nat) (l : list nat),
   sorted (n :: l) -> In k l -> n < k.
@@ -334,7 +329,6 @@ Proof. intros. induction l1.
  -- (* Subcase: l1 = [] *) apply sorted_tl in H as IH. 
     unfold app in IHl1; unfold app in H. assert (a0 = a). { unfold In in H1. intuition. }
     rewrite H3 in H; rewrite H3 in H1; rewrite H3 in H0.
-    Check (sorted_head a b l2).
     apply (sorted_head b a l2) in H. apply IHl1 in IH. assumption. assumption.
  -- (* Subcase: l1 = n :: l1 *) 
     rewrite <- (app_comm_cons (n :: l1) l2 a0) in H.
@@ -381,7 +375,7 @@ Proof.
   intros. inversion H. apply sorted_tl in H4 as H5.
   destruct tl.
   - apply sorted_1.
-  - Check sorted_cons. inversion H4.
+  - inversion H4.
     assert (a < n). { Nat.order. }
     apply (sorted_cons a n tl) in H11. assumption. assumption.
 Qed.
@@ -946,7 +940,6 @@ Proof.
      assert (S n <= first_new (S n) (y :: l)). apply first_new_nondecreasing.
      split. lia. apply IHsorted.
  -- (* x > n *)
-    Check @first_new_not_in_lt.
     apply (@first_new_not_in_lt (x :: y :: l) (y :: l) x n).
     reflexivity. apply sorted_cons. assumption. assumption. assumption.
 Qed.
@@ -1014,7 +1007,6 @@ Qed.
 
 Require Import Nat.
 Require Import Coq.Arith.PeanoNat.
-  Check Nat.eqb_eq.
 
 Lemma first_new_cons {l n} :
   first_new n (n :: l) = first_new (S n) l.
@@ -1124,7 +1116,6 @@ Proof.
      assert (first_new m (a :: l) = first_new (S m) l). {
        rewrite <- e; apply first_new_cons.
      }
-     Check le_le_S_eq.
      assert (S m <= n \/ m = n). { apply le_le_S_eq in H. assumption. }
      destruct H2.
  +++ (* S m <= n *)
@@ -1145,8 +1136,6 @@ match n with
 | 0 => []%list
 | S n' => ((nat_range_list n') ++ [n'])%list
 end.
-
-Check (nat_range_list 3).
 
 Lemma test_works2 :
   [0;1;2]%list = nat_range_list 3.
@@ -1397,8 +1386,6 @@ Proof.
   rewrite H.
   apply nat_range_list_length.
 Qed.
-
-Check nat_range_list_entry.
 (* 
   Lemma rev_nth : forall l d n, n < length l ->
     nth n (rev l) d = nth (length l - S n) l d.

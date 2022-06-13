@@ -103,14 +103,14 @@ in the "context part". Towards that end, we must [lift] the term whenever a
 quantifier is encountered.
 *)
 
-Fixpoint subst_bvar_inner (n : nat) (t : Term) (phi : Formula) : Formula :=
+Fixpoint capture_free_subst (n : nat) (t : Term) (phi : Formula) : Formula :=
 match phi with
 | Falsum => phi
 | Atom pred => Atom (subst (BVar n) t pred)
-| And fm1 fm2 => And (subst_bvar_inner n t fm1) (subst_bvar_inner n t fm2)
-| Or fm1 fm2 => Or (subst_bvar_inner n t fm1) (subst_bvar_inner n t fm2)
-| Implies fm1 fm2 => Implies (subst_bvar_inner n t fm1) (subst_bvar_inner n t fm2)
-| Exists fm => Exists (subst_bvar_inner (S n) (lift (S n) 1 t) fm)
+| And fm1 fm2 => And (capture_free_subst n t fm1) (capture_free_subst n t fm2)
+| Or fm1 fm2 => Or (capture_free_subst n t fm1) (capture_free_subst n t fm2)
+| Implies fm1 fm2 => Implies (capture_free_subst n t fm1) (capture_free_subst n t fm2)
+| Exists fm => Exists (capture_free_subst (S n) (lift (S n) 1 t) fm)
 end.
 
 (** Specialization and choosing a witness for existential quantification
@@ -118,7 +118,7 @@ amounts to the same "operations" of peeling off an outermost quantifier, then
 behaving as expected. *)
 Fixpoint quantifier_elim_subst (n : nat) (t : Term) (phi : Formula) : Formula :=
 match phi with
-| Exists fm => subst_bvar_inner n t fm
+| Exists fm => capture_free_subst n t fm
 | And A B => And (quantifier_elim_subst n t A) (quantifier_elim_subst n t B)
 | Or A B => Or (quantifier_elim_subst n t A) (quantifier_elim_subst n t B)
 | Implies A B => Implies (quantifier_elim_subst n t A) (quantifier_elim_subst n t B)
@@ -149,7 +149,6 @@ Global Instance LiftFormula : Lift Formula :=
 We would encode $\forall x\exists y P(x,y)$ as 
 [Forall (Exists (Atom (P 2 "P" [BVar 1; BVar 0])))], using de Bruijn indices.
 *)
-Check Forall (Exists (Atom (P 2 "P" [Var (BVar 1); Var (BVar 0)]))).
 
 
 (**

@@ -104,12 +104,12 @@ in (translate st)
 Proof. unfold constant; simpl; auto. Qed.
 
 
-(* The [subst_bvar_inner] usage here causes problems later on, so I need to think
+(* The [capture_free_subst] usage here causes problems later on, so I need to think
 very carefully about what to do here... *)
 Global Instance TranslatableJudgementType : Translatable JudgementType := {
   translate (J : JudgementType) := 
   match J with
-  | Esti tm Tp => subst_bvar_inner 0 tm (translate Tp) (* XXX this needs to be carefully thought through... *)
+  | Esti tm Tp => capture_free_subst 0 tm (translate Tp) (* XXX this needs to be carefully thought through... *)
   | Subtype T1 T2 => match (translate T1), (translate T2) with
                      | A1, A2 => Forall (Implies A1 A2)
                      end
@@ -222,8 +222,8 @@ Proof.
   + unfold translate_antecedent. rewrite <- H.
     set (t := fresh_evar [Γ] Falsum).
     apply (@ND_forall_i [Γ] (Implies (translate a) Verum) t).
-    assert ([Γ] ⊢ subst_bvar_inner 0 t (Implies (translate a) Verum)
-            = [Γ] ⊢ Implies (subst_bvar_inner 0 t (translate a)) Verum). {
+    assert ([Γ] ⊢ capture_free_subst 0 t (Implies (translate a) Verum)
+            = [Γ] ⊢ Implies (capture_free_subst 0 t (translate a)) Verum). {
       simpl; auto.
     }
     rewrite H0. apply ND_imp_i2; apply ND_True_intro.
@@ -236,15 +236,15 @@ Proof.
     set (t := fresh_evar [Γ] Falsum).
     apply (@ND_forall_i [Γ] (Implies (translate a) (translate_antecedent (b :: l')%list j)) t).
     2: unfold t; reflexivity.
-    assert ([Γ] ⊢ subst_bvar_inner 0 t (Implies (translate a) (translate_antecedent (b :: l')%list j))
-          = [Γ] ⊢ Implies (subst_bvar_inner 0 t (translate a)) (subst_bvar_inner 0 t (translate_antecedent (b :: l')%list j))). {
+    assert ([Γ] ⊢ capture_free_subst 0 t (Implies (translate a) (translate_antecedent (b :: l')%list j))
+          = [Γ] ⊢ Implies (capture_free_subst 0 t (translate a)) (capture_free_subst 0 t (translate_antecedent (b :: l')%list j))). {
       simpl; auto.
     }
     rewrite H1.
     apply ND_imp_i2.
     apply ND_and_context. 
-    assert([And (subst_bvar_inner 0 t (translate a)) Γ] ⊢ translate_antecedent (b :: l')%list j). {
-      apply (@IHl (And (subst_bvar_inner 0 t (translate a)) Γ)).
+    assert([And (capture_free_subst 0 t (translate a)) Γ] ⊢ translate_antecedent (b :: l')%list j). {
+      apply (@IHl (And (capture_free_subst 0 t (translate a)) Γ)).
     }
     forall Γ : Formula,
       [Γ] ⊢ translate_antecedent (b :: l')%list j

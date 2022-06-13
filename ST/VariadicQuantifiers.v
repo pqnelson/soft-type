@@ -87,8 +87,6 @@ Proof. intros.
   rewrite <- H2.
   assumption.
 Qed.
-Print subst_bvar_inner.
-
 
 Lemma nor_not_and : forall (A B : Prop),
   ~A /\ ~B <-> ~(A \/ B).
@@ -118,8 +116,7 @@ Proof.
   + assert (List.Exists P0 [] <-> False). { apply List.Exists_nil. } rewrite H0. simpl; auto.
   + assert (List.Exists P0 (a :: l) <-> P0 a \/ List.Exists P0 l). { apply List.Exists_cons. }
     rewrite H0.
-    Check List.Forall_cons.
-    Check ((fun (a : A) => ~ P0 a)).
+    Forall_cons.
     set (notP0 := (fun (a : A) => ~ P0 a)).
     apply (List.Forall_cons_iff) in H. destruct H. apply IHl in H1 as IH.
     apply and_not_or. split. assumption. assumption.
@@ -182,12 +179,12 @@ Proof.
 Qed.
 
 Theorem subst_bvar_free : forall (n : nat) (A : Formula) (t : Term),
-  ~(contains_bvar n A) -> (subst_bvar_inner n t A) = A.
+  ~(contains_bvar n A) -> (capture_free_subst n t A) = A.
 Proof.
   intros. generalize dependent n. generalize dependent t. induction A.
   - simpl; auto.
   - intros. apply predicate_subst_bvar_free with (t := t) in H as H1. 
-    unfold subst_bvar_inner. rewrite H1. reflexivity.
+    unfold capture_free_subst. rewrite H1. reflexivity.
   - intros. assert (~contains_bvar n A1 /\ ~contains_bvar n A2). { 
       assert (contains_bvar n (And A1 A2) <-> contains_bvar n A1 \/ contains_bvar n A2). {
         simpl; auto. intuition.
@@ -196,7 +193,7 @@ Proof.
       apply not_or_and. assumption. 
     } destruct H0.
     apply (IHA1 t n) in H0; apply (IHA2 t n) in H1.
-    assert (subst_bvar_inner n t (And A1 A2) = And (subst_bvar_inner n t A1) (subst_bvar_inner n t A2)). {
+    assert (capture_free_subst n t (And A1 A2) = And (capture_free_subst n t A1) (capture_free_subst n t A2)). {
       simpl; auto.
     }
     rewrite H2. rewrite H0; rewrite H1; reflexivity.
@@ -208,7 +205,7 @@ Proof.
       apply not_or_and. assumption. 
     } destruct H0.
     apply (IHA1 t n) in H0; apply (IHA2 t n) in H1.
-    assert (subst_bvar_inner n t (Or A1 A2) = Or (subst_bvar_inner n t A1) (subst_bvar_inner n t A2)). {
+    assert (capture_free_subst n t (Or A1 A2) = Or (capture_free_subst n t A1) (capture_free_subst n t A2)). {
       simpl; auto.
     }
     rewrite H2. rewrite H0; rewrite H1; reflexivity.
@@ -220,14 +217,14 @@ Proof.
       apply not_or_and. assumption. 
     } destruct H0.
     apply (IHA1 t n) in H0; apply (IHA2 t n) in H1.
-    assert (subst_bvar_inner n t (Implies A1 A2) = Implies (subst_bvar_inner n t A1) (subst_bvar_inner n t A2)). {
+    assert (capture_free_subst n t (Implies A1 A2) = Implies (capture_free_subst n t A1) (capture_free_subst n t A2)). {
       simpl; auto.
     }
     rewrite H2. rewrite H0; rewrite H1; reflexivity.
   - intros. assert (~contains_bvar (S n) A). {
       unfold contains_bvar in H. unfold ContainsBVarFormula in H. simpl; auto.
     }
-    assert (subst_bvar_inner n t (Exists A) = Exists (subst_bvar_inner (S n) (lift (S n) 1 t) A)). {
+    assert (capture_free_subst n t (Exists A) = Exists (capture_free_subst (S n) (lift (S n) 1 t) A)). {
       unfold contains_bvar; unfold ContainsBVarFormula; simpl; auto.
     }
     apply (IHA (lift (S n) 1 t) (S n)) in H0 as H2. rewrite H1; rewrite H2.
@@ -296,17 +293,17 @@ Proof.
     + apply bvar_lift_composed_step. assumption.
 Qed.
 
-Theorem subst_bvar_inner_forall_init : forall (n : nat) (t : Term) (phi : Formula),
-  subst_bvar_inner n t (Forall phi) = Forall (subst_bvar_inner (S n) (lift (S n) 1 t) phi).
+Theorem capture_free_subst_forall_init : forall (n : nat) (t : Term) (phi : Formula),
+  capture_free_subst n t (Forall phi) = Forall (capture_free_subst (S n) (lift (S n) 1 t) phi).
 Proof.
-  intros. unfold Forall; unfold subst_bvar_inner; simpl; auto.
+  intros. unfold Forall; unfold capture_free_subst; simpl; auto.
 Qed.
 
-Theorem subst_bvar_inner_forall_step : forall (c d n : nat) (t : Term) (phi : Formula),
-  subst_bvar_inner n (lift c d t) (Forall phi) 
-  = Forall (subst_bvar_inner (S n) (lift (S n) 1 (lift c d t)) phi).
+Theorem capture_free_subst_forall_step : forall (c d n : nat) (t : Term) (phi : Formula),
+  capture_free_subst n (lift c d t) (Forall phi) 
+  = Forall (capture_free_subst (S n) (lift (S n) 1 (lift c d t)) phi).
 Proof.
-  intros. unfold Forall; unfold subst_bvar_inner; simpl; auto.
+  intros. unfold Forall; unfold capture_free_subst; simpl; auto.
 Qed.
 
 Lemma every_eq {k n p q} :
@@ -330,7 +327,7 @@ Proof.
 Qed.
 
 Theorem every_subst {n t p} :
-  subst_bvar_inner 0 t (Every n p) = Every n (subst_bvar_inner n (tlift n n t) p).
+  capture_free_subst 0 t (Every n p) = Every n (capture_free_subst n (tlift n n t) p).
 Proof.
   intros. generalize dependent p.
   induction n.
@@ -340,40 +337,36 @@ Proof.
     } 
     rewrite H. reflexivity.
   - intros. 
-    assert (subst_bvar_inner 0 t (Every n (Forall p)) =
-      Every n (subst_bvar_inner n (tlift n n t) (Forall p))). {
+    assert (capture_free_subst 0 t (Every n (Forall p)) =
+      Every n (capture_free_subst n (tlift n n t) (Forall p))). {
       apply (IHn (Forall p)).
     }
     assert (Every n (Forall p) = Every (S n) p). { apply (every_ind n p). }
     
     rewrite H0 in H; rewrite H.
-    rewrite subst_bvar_inner_forall_init.
-    Print subst_bvar_inner.
-    Check (lift (S n) 1 (tlift n n t)).
-    Check (subst_bvar_inner n (tlift n n t) (Forall p)).
-   (* assert ((subst_bvar_inner n (tlift n n t) (Forall p)) =
-    assert ((subst_bvar_inner n t (Exists p)) = Exists (subst_bvar_inner (S n) t p)). {
-      simpl; auto. unfold subst_bvar_inner.
+    rewrite capture_free_subst_forall_init.
+    Print capture_free_subst.
+   (* assert ((capture_free_subst n (tlift n n t) (Forall p)) =
+    assert ((capture_free_subst n t (Exists p)) = Exists (capture_free_subst (S n) t p)). {
+      simpl; auto. unfold capture_free_subst.
       *)
 Admitted.
-
-Check ND_forall_i.
 
 (** I am trying to formalize the situation where we "condense" several quantifiers
 into a single binder. For example, [Forall (Forall (Forall p))] could be
 abbreviated as [Every 3 p]. 
 
 Now, substitution would be [subst_bvar_vec 0 [t1;t2;t3] p] which has the property
-[subst_bvar_vec 0 [t1] p = subst_bvar_inner 0 t1 p]. 
+[subst_bvar_vec 0 [t1] p = capture_free_subst 0 t1 p]. 
 The nullary case amounts to just producing the equation [p].
-The inductive case amounts to iterating the single [subst_bvar_inner] over
+The inductive case amounts to iterating the single [capture_free_subst] over
 and over, again and again. The default case will be [n = 0]...but ostensibly,
 there could be a time when a generic [n] may be useful.
 *)
 Fixpoint subst_bvar_vec {k} (n : nat) (v : Vector.t Term k) (p : Formula) :=
 match v with
 | []%vector => p
-| (h::tl)%vector => subst_bvar_vec n tl (subst_bvar_inner n h p)
+| (h::tl)%vector => subst_bvar_vec n tl (capture_free_subst n h p)
 end.
 
 Fixpoint shift_evars_term_by (offset : nat) (t : Term) : Term :=
@@ -402,8 +395,8 @@ Proof.
     set (t := fresh_evar Γ Falsum).
     apply (@ND_forall_i Γ (Implies p Verum) t).
     2: unfold t; reflexivity.
-    assert (Γ ⊢ subst_bvar_inner 0 t (Implies p Verum)
-            = Γ ⊢ Implies (subst_bvar_inner 0 t p) Verum). {
+    assert (Γ ⊢ capture_free_subst 0 t (Implies p Verum)
+            = Γ ⊢ Implies (capture_free_subst 0 t p) Verum). {
       simpl; auto.
     }
     rewrite H0.
@@ -423,7 +416,7 @@ Qed.
 
 (* I should prove this, but am too lazy to work through all the cases. *)
 Lemma subst_bvar_with_itself : forall (n : nat) (p : Formula),
-  subst_bvar_inner n (Var (BVar n)) p = p.
+  capture_free_subst n (Var (BVar n)) p = p.
 Admitted.
 
 Theorem generalize_a_valid_deduction {Γ} :
@@ -468,11 +461,11 @@ Lemma forall_verum {Γ} :
 Proof.
   intros. 
   set (t := fresh_evar Γ Falsum).
-  assert (subst_bvar_inner 0 t Verum = Verum). {
+  assert (capture_free_subst 0 t Verum = Verum). {
     simpl; auto.
   }
   assert (Γ ⊢ Verum). { apply ND_True_intro. }
-  rewrite <- H in H0. Check @ND_forall_i.
+  rewrite <- H in H0.
   apply (@ND_forall_i Γ Verum t) in H0 as H1.
   assumption. unfold t; reflexivity.
 Qed.
@@ -534,7 +527,7 @@ Theorem ungeneralize_a_valid_deduction {Γ} :
   forall (p : Formula),
   Γ ⊢ p -> Γ ⊢ Forall p.
 Proof.
-  intros. Check @ND_forall_i.
+  intros.
   set (t := (Var (BVar 0))).
   apply (@ND_forall_elim Γ p t) in H as H0. unfold t in H0.
   rewrite (subst_bvar_with_itself 0 p) in H0.
@@ -592,20 +585,20 @@ Proof.
     }
     unfold tlift in IH.
 Theorem every_subst {n t p} :
-  subst_bvar_inner 0 t (Every n p) = Every n (subst_bvar_inner n (tlift n n t) p).
+  capture_free_subst 0 t (Every n p) = Every n (capture_free_subst n (tlift n n t) p).
 Proof.
   intros. generalize dependent p.
   induction n.
   - intros; simpl; auto.
   - intros. 
-    assert (subst_bvar_inner 0 t (Every n (Forall p)) =
-      Every n (subst_bvar_inner n t (Forall p))). {
+    assert (capture_free_subst 0 t (Every n (Forall p)) =
+      Every n (capture_free_subst n t (Forall p))). {
       apply (IHn (Forall p)).
     }
     assert (Every n (Forall p) = Every (S n) p). apply (every_ind n p).
     rewrite H0 in H.
-    assert ((subst_bvar_inner n t (Exists p)) = Exists (subst_bvar_inner (S n) t p)). {
-      simpl; auto. unfold subst_bvar_inner.
+    assert ((capture_free_subst n t (Exists p)) = Exists (capture_free_subst (S n) t p)). {
+      simpl; auto. unfold capture_free_subst.
 *)
 (* 
 Every = 
@@ -619,20 +612,20 @@ fix Every (n : nat) (p : Formula) {struct n} : Formula :=
 
 (* 
 Lemma every_subst {n t p} :
-  subst_bvar_inner 0 t (Every n p) = Every n (subst_bvar_inner n (lift n n t) p).
+  capture_free_subst 0 t (Every n p) = Every n (capture_free_subst n (lift n n t) p).
 Proof.
   intros. generalize dependent p.
   induction n.
   - intros. unfold Every. simpl; auto.
   - intros. 
-    assert (subst_bvar_inner 0 t (Every n (Forall p)) =
-      Every n (subst_bvar_inner n t (Forall p))). {
+    assert (capture_free_subst 0 t (Every n (Forall p)) =
+      Every n (capture_free_subst n t (Forall p))). {
       apply (IHn (Forall p)).
     }
     assert (Every n (Forall p) = Every (S n) p). apply (every_ind n p).
     rewrite H0 in H.
-    assert ((subst_bvar_inner n t (Exists p)) = Exists (subst_bvar_inner (S n) t p)). {
-      simpl; auto. unfold subst_bvar_inner.
+    assert ((capture_free_subst n t (Exists p)) = Exists (capture_free_subst (S n) t p)). {
+      simpl; auto. unfold capture_free_subst.
 *)
 
 (* 
@@ -655,7 +648,7 @@ Proof.
     }
     assert (Every (S n) p = Forall (Every n p)). { simpl; auto. }
     set (t := fresh_evar (Not (Some (S n) (Not p)) :: Γ) Falsum).
-    Check @ND_forall_i. rewrite H1.
+    rewrite H1.
     apply (@ND_forall_i (Not (Some (S n) (Not p)) :: Γ) (Every n p) t).
     2: unfold t; reflexivity.
 *)
@@ -680,22 +673,13 @@ Lemma not_some_not_is_every {Γ} :
       set (q := (Some n p)).
       apply not_Exists.
     }
-    Check @ND_forall_i.
-    Check @ND_forall_elim.
-    Check @ND_exists_elim.
     Assume((Not (Exists (Some n p))) :: Γ ⊢ (Not (Exists (Some n p)))).
     assert(Γ ⊆ (Not (Exists (Some n p))) :: Γ). { apply subcontext_weaken; apply subcontext_reflex. }
     apply (@weakening Γ ((Not (Exists (Some n p))) :: Γ)) in H1 as H4. 2: assumption.
     apply (@ND_imp_e (Not (Exists (Some n p)) :: Γ) (Not (Exists (Some n p)))) in H4.
     2: assumption.
-    Check @ND_exists_elim.
-    Check @ND_forall_i.
     set (t := fresh_evar Γ Falsum).
-    Check @ND_exists_elim_small.
-    Check @ND_exists_elim.
-    assert (Γ ⊢ subst_bvar_inner 0 t (Every n (Not p))).
-    Check @ND_forall_elim.
-    Check @ND_forall_elim.
+    assert (Γ ⊢ capture_free_subst 0 t (Every n (Not p))).
      assert(Γ ⊢ Some (S n) (Not p) = Γ ⊢ Exists (Some n (Not p))). { simpl; auto. }
     assert(Γ ⊢ Implies (Not (Forall (Every n p)))
                 (Exists (Not (Every n p)))). {
@@ -716,5 +700,4 @@ Lemma not_some_not_is_every {Γ} :
     apply (@weakening Γ ((Not (Every (S n) p)) :: Γ)) in H3 as H6.
     apply (@ND_imp_e ((Not (Every (S n) p)) :: Γ) (Not (Every (S n) p))) in H6.
     2: assumption.
-    Check @ND_exists_elim_small.
 *)

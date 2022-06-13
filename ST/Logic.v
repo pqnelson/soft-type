@@ -77,10 +77,10 @@ Inductive deducible : list Formula -> Formula -> Prop :=
   P :: Γ ⊢ Q ->
   Γ ⊢ Q
 | ND_exists_intro {Γ p t} :
-  Γ ⊢ (subst_bvar_inner 0 t p) -> 
+  Γ ⊢ (capture_free_subst 0 t p) -> 
   Γ ⊢ Exists p
 | ND_exists_elim_small {Γ p q c} :
-  (subst_bvar_inner 0 c p)::Γ ⊢ q -> 
+  (capture_free_subst 0 c p)::Γ ⊢ q -> 
   c = fresh_evar Γ q ->
   (Exists p)::Γ ⊢ q
 | ND_proof_by_contradiction {Γ p} :
@@ -98,8 +98,8 @@ where "Γ ⊢ P" := (deducible Γ P).
 
 Definition proves (fm : Formula) : Prop := deducible List.nil fm.
 
-Hint Unfold GlobalContext LocalContext : typeclass_instances.
-Hint Constructors well_typed deducible : core.
+#[local] Hint Unfold GlobalContext LocalContext : typeclass_instances.
+#[local] Hint Constructors well_typed deducible : core.
 
 (* These next two lemmas are "obvious", but obnoxious to prove.
 So I'm...lazy. *)
@@ -112,7 +112,7 @@ Lemma exists_evar_shift {Γ p q} :
 Admitted.
 
 Theorem exists_elim {Γ p q} :
-  (subst_bvar_inner 0 (EConst 0) (shift_evars p))::(shift_evars Γ) ⊢ (shift_evars q) -> 
+  (capture_free_subst 0 (EConst 0) (shift_evars p))::(shift_evars Γ) ⊢ (shift_evars q) -> 
   (Exists p)::Γ ⊢ q.
 Proof.
   intros.
@@ -124,7 +124,7 @@ Qed.
 Theorem ND_exists_elim {Γ p q c} :
   Γ ⊢ Exists p ->
   c = fresh_evar Γ q ->
-  subst_bvar_inner 0 c p :: Γ ⊢ q -> Γ ⊢ q.
+  capture_free_subst 0 c p :: Γ ⊢ q -> Γ ⊢ q.
 Proof.
   intros.
   apply ND_exists_elim_small in H1.
@@ -177,8 +177,8 @@ Qed.
 (* This is an axiom, which can't really be proven. *)
 Lemma renaming_econst : forall (Γ1 Γ2 : list Formula) (p q : Formula),
   Γ1 ⊆ Γ2 -> 
-  subst_bvar_inner 0 (fresh_evar Γ1 q) p :: Γ1 ⊢ q -> 
-  subst_bvar_inner 0 (fresh_evar Γ2 q) p :: Γ2 ⊢ q.
+  capture_free_subst 0 (fresh_evar Γ1 q) p :: Γ1 ⊢ q -> 
+  capture_free_subst 0 (fresh_evar Γ2 q) p :: Γ2 ⊢ q.
 Admitted.
 
 Import ListNotations.
@@ -363,7 +363,6 @@ Theorem ND_conj_implies {Γ p q r} :
 Proof.
   intros. apply ND_imp_i2.
   assert(Γ ⊆ p::Γ). { apply subcontext_weaken. apply subcontext_reflex. }
-  Check weakening.
   apply (weakening Γ (p :: Γ) (Implies p q)) in H1 as H3. 2: assumption.
   apply (weakening Γ (p :: Γ) (Implies p r)) in H1 as H4. 2: assumption.
   assert (In p (p::Γ)). prove_In. apply ND_assume in H2.
@@ -481,8 +480,6 @@ Proof.
   apply (@ND_imp_e Γ (Not (Not p)) p) in H0. assumption. assumption.
 Qed.
 
-Check deducible_ind.
-
 Lemma falsum_is_negated_verum {Γ} :
   Γ ⊢ Implies (Not Verum) Falsum.
 Proof.
@@ -509,15 +506,13 @@ Qed.
 
 
 Lemma subst_negate {Γ p t} :
-  Γ ⊢ Not (subst_bvar_inner 0 t p) <->
-  Γ ⊢ subst_bvar_inner 0 t (Not p).
+  Γ ⊢ Not (capture_free_subst 0 t p) <->
+  Γ ⊢ capture_free_subst 0 t (Not p).
 Proof.
   split.
 - intros; simpl; auto.
 - intros; simpl; auto.
 Qed.
-
-Check @ND_exists_intro.
 
 (** We can always eliminate the [Forall] quantifier, to just use
 [Exists], thanks to de Morgan's laws. This section gives us the
@@ -527,28 +522,28 @@ Section ForallAbbreviation.
 [Exists], thanks to de Morgan's laws. This theorem gives us the
 "introduction rule" for this "abbreviated [Forall]" quantifier. *)
 Theorem ND_forall_i {Γ p t} :
-  Γ ⊢ subst_bvar_inner 0 t p ->
+  Γ ⊢ capture_free_subst 0 t p ->
   t = fresh_evar Γ Falsum ->
   Γ ⊢ Forall p.
 Proof.
-  intros. Check @ND_exists_elim_small.
-  assert (Γ ⊢ Implies (subst_bvar_inner 0 t p)
-               (Not (Not (subst_bvar_inner 0 t p)))). apply ND_double_negation2.
+  intros.
+  assert (Γ ⊢ Implies (capture_free_subst 0 t p)
+               (Not (Not (capture_free_subst 0 t p)))). apply ND_double_negation2.
   rename H0 into Ha.
   rename H1 into H0.
-  apply (@ND_imp_e Γ (subst_bvar_inner 0 t p)) in H0. 2: assumption.
-  assert (Γ ⊢ Not (Not (subst_bvar_inner 0 t p)) -> Γ ⊢ Not (subst_bvar_inner 0 t (Not p))). {
+  apply (@ND_imp_e Γ (capture_free_subst 0 t p)) in H0. 2: assumption.
+  assert (Γ ⊢ Not (Not (capture_free_subst 0 t p)) -> Γ ⊢ Not (capture_free_subst 0 t (Not p))). {
     intros. simpl; auto.
   }
   apply H1 in H0.
-(* Thus we have established [H0 : Γ ⊢ Not (subst_bvar_inner 0 t (Not p))] *)
+(* Thus we have established [H0 : Γ ⊢ Not (capture_free_subst 0 t (Not p))] *)
   unfold Not. unfold Not in H0.
   apply ND_imp_i2.
   apply (@ND_exists_elim_small Γ (Not p) Falsum t).
-  Assume (subst_bvar_inner 0 t (Not p) :: Γ ⊢ (subst_bvar_inner 0 t (Not p))). 
-  assert (Γ ⊆ (subst_bvar_inner 0 t (Not p) :: Γ)). apply subcontext_weaken; apply subcontext_reflex.
-  apply (@weakening Γ (subst_bvar_inner 0 t (Not p) :: Γ)) in H0.
-  apply (@ND_imp_e (subst_bvar_inner 0 t (Not p) :: Γ) (subst_bvar_inner 0 t (Not p))) in H0.
+  Assume (capture_free_subst 0 t (Not p) :: Γ ⊢ (capture_free_subst 0 t (Not p))). 
+  assert (Γ ⊆ (capture_free_subst 0 t (Not p) :: Γ)). apply subcontext_weaken; apply subcontext_reflex.
+  apply (@weakening Γ (capture_free_subst 0 t (Not p) :: Γ)) in H0.
+  apply (@ND_imp_e (capture_free_subst 0 t (Not p) :: Γ) (capture_free_subst 0 t (Not p))) in H0.
   assumption. assumption. assumption. assumption.
 Qed.
 
@@ -563,8 +558,8 @@ Proof.
 Qed.
 
 Lemma subst_negate2 {Γ p t} :
-  Γ ⊢ Not (Not (subst_bvar_inner 0 t p)) <->
-  Γ ⊢ subst_bvar_inner 0 t (Not (Not p)).
+  Γ ⊢ Not (Not (capture_free_subst 0 t p)) <->
+  Γ ⊢ capture_free_subst 0 t (Not (Not p)).
 Proof.
   split.
 - intros; simpl; auto.
@@ -582,24 +577,24 @@ Step 2: Infer that [Γ ⊢ Not (Not p[t])] holds. And then the law of
         double negation gives the result. *)
 Theorem ND_forall_elim {Γ p t} :
   Γ ⊢ Forall p ->
-  Γ ⊢ subst_bvar_inner 0 t p.
+  Γ ⊢ capture_free_subst 0 t p.
 Proof. intros.
-  assert (Γ ⊆ (subst_bvar_inner 0 t (Not p) :: Γ)). apply subcontext_weaken; apply subcontext_reflex.
-  apply (@weakening Γ (subst_bvar_inner 0 t (Not p) :: Γ)) in H. 2: assumption.
-  Assume ((subst_bvar_inner 0 t (Not p) :: Γ) ⊢ (subst_bvar_inner 0 t (Not p))).
+  assert (Γ ⊆ (capture_free_subst 0 t (Not p) :: Γ)). apply subcontext_weaken; apply subcontext_reflex.
+  apply (@weakening Γ (capture_free_subst 0 t (Not p) :: Γ)) in H. 2: assumption.
+  Assume ((capture_free_subst 0 t (Not p) :: Γ) ⊢ (capture_free_subst 0 t (Not p))).
   apply ND_exists_intro in H1.
-  apply (@ND_imp_e (subst_bvar_inner 0 t (Not p) :: Γ) (Exists (Not p)) Falsum) in H as H2. 2: assumption.
-  apply (@ND_neg_i Γ (subst_bvar_inner 0 t (Not p)) (Exists (Not p))) in H1 as H3.
+  apply (@ND_imp_e (capture_free_subst 0 t (Not p) :: Γ) (Exists (Not p)) Falsum) in H as H2. 2: assumption.
+  apply (@ND_neg_i Γ (capture_free_subst 0 t (Not p)) (Exists (Not p))) in H1 as H3.
   2: assumption.
   (* Thus we have proved, in [H3], that
-     [Γ ⊢ Not (subst_bvar_inner 0 t (Not p))]. 
+     [Γ ⊢ Not (capture_free_subst 0 t (Not p))]. 
      We will just move the inner [Not] outside the substitution, then
      use double negation law to prove this gives us the goal.*)
   rewrite -> subst_negate in H3.
   apply subst_negate2 in H3.
-  assert (Γ ⊢ Implies (Not (Not (subst_bvar_inner 0 t p))) (subst_bvar_inner 0 t p)).
+  assert (Γ ⊢ Implies (Not (Not (capture_free_subst 0 t p))) (capture_free_subst 0 t p)).
   apply ND_double_negation.
-  apply @ND_imp_e with (p := (Not (Not (subst_bvar_inner 0 t p)))) in H4.
+  apply @ND_imp_e with (p := (Not (Not (capture_free_subst 0 t p)))) in H4.
   assumption. assumption.
 Qed.
 End ForallAbbreviation.
@@ -613,8 +608,6 @@ Proof.
   apply (@ND_imp_e (p:: Not q :: Implies p q :: Γ) p q) in H0 as H1.
   2: assumption.
   Assume(p::(Not q)::(Implies p q)::Γ ⊢ Not q).
-  Check @ND_neg_i.
-  Check @ND_not_i.
   apply (@ND_neg_i (Not q :: Implies p q :: Γ)) in H1.
   apply (@ND_imp_i2 (Implies p q :: Γ) (Not q) (Not p)) in H1. 2: assumption.
   apply ND_imp_i2 in H1.
@@ -651,20 +644,19 @@ Theorem forall_modus_ponens_tautology {Γ p q} :
 Proof.
   intros.
   set (c := fresh_evar (Forall (Implies p q) :: Γ) (Exists q)).
-  Assume((subst_bvar_inner 0 c p) ::  Forall (Implies p q) :: Γ ⊢ Forall (Implies p q)).
-  apply (@ND_forall_elim (subst_bvar_inner 0 c p
+  Assume((capture_free_subst 0 c p) ::  Forall (Implies p q) :: Γ ⊢ Forall (Implies p q)).
+  apply (@ND_forall_elim (capture_free_subst 0 c p
      :: Forall (Implies p q) :: Γ) (Implies p q) c) in H as H2.
      
-  assert (subst_bvar_inner 0 c p
-     :: Forall (Implies p q) :: Γ ⊢ subst_bvar_inner 0 c (Implies p q) 
-  = subst_bvar_inner 0 c p
-     :: Forall (Implies p q) :: Γ ⊢ Implies (subst_bvar_inner 0 c p) (subst_bvar_inner 0 c q)). { simpl; auto. }
+  assert (capture_free_subst 0 c p
+     :: Forall (Implies p q) :: Γ ⊢ capture_free_subst 0 c (Implies p q) 
+  = capture_free_subst 0 c p
+     :: Forall (Implies p q) :: Γ ⊢ Implies (capture_free_subst 0 c p) (capture_free_subst 0 c q)). { simpl; auto. }
   rewrite H0 in H2. clear H0.
-  apply (ND_imp_e (p := subst_bvar_inner 0 c p) (q := subst_bvar_inner 0 c q)) in H2.
+  apply (ND_imp_e (p := capture_free_subst 0 c p) (q := capture_free_subst 0 c q)) in H2.
   2: apply ND_assume; prove_In.
-  apply (@ND_exists_intro (subst_bvar_inner 0 c p
+  apply (@ND_exists_intro (capture_free_subst 0 c p
      :: Forall (Implies p q) :: Γ) q c) in H2.
-  Check (@ND_exists_elim_small Γ p).
   apply (@ND_exists_elim_small (Forall (Implies p q) :: Γ) p (Exists q) c) in H2 as H3.
   apply ND_imp_i2 in H3.
   apply ND_imp_i2 in H3.
@@ -673,18 +665,18 @@ Qed.
 
 Theorem forall_modus_const_tautology {Γ p q c} :
   Γ ⊢ Implies (Forall (Implies p q))
-         (Implies (subst_bvar_inner 0 c p) (subst_bvar_inner 0 c q)).
+         (Implies (capture_free_subst 0 c p) (capture_free_subst 0 c q)).
 Proof.
   intros.
-  Assume((subst_bvar_inner 0 c p) ::  Forall (Implies p q) :: Γ ⊢ Forall (Implies p q)).
-  apply (@ND_forall_elim (subst_bvar_inner 0 c p
+  Assume((capture_free_subst 0 c p) ::  Forall (Implies p q) :: Γ ⊢ Forall (Implies p q)).
+  apply (@ND_forall_elim (capture_free_subst 0 c p
     :: Forall (Implies p q) :: Γ) (Implies p q) c) in H as H1.
-  assert (subst_bvar_inner 0 c p
-     :: Forall (Implies p q) :: Γ ⊢ subst_bvar_inner 0 c (Implies p q) 
-  = subst_bvar_inner 0 c p
-     :: Forall (Implies p q) :: Γ ⊢ Implies (subst_bvar_inner 0 c p) (subst_bvar_inner 0 c q)). { simpl; auto. }
+  assert (capture_free_subst 0 c p
+     :: Forall (Implies p q) :: Γ ⊢ capture_free_subst 0 c (Implies p q) 
+  = capture_free_subst 0 c p
+     :: Forall (Implies p q) :: Γ ⊢ Implies (capture_free_subst 0 c p) (capture_free_subst 0 c q)). { simpl; auto. }
   rewrite H0 in H1. clear H0.
-  apply (@ND_imp_e (subst_bvar_inner 0 c p :: Forall (Implies p q) :: Γ) (subst_bvar_inner 0 c p) (subst_bvar_inner 0 c q)) in H1 as H2.
+  apply (@ND_imp_e (capture_free_subst 0 c p :: Forall (Implies p q) :: Γ) (capture_free_subst 0 c p) (capture_free_subst 0 c q)) in H1 as H2.
   apply ND_imp_i2 in H2 as H3.
   apply ND_imp_i2 in H3 as H4.
   assumption. apply ND_assume; prove_In.
@@ -698,10 +690,10 @@ Proof.
   apply (@ND_forall_i (Forall (And p q) :: Γ) q c). 2: auto.
   Assume (Forall (And p q) :: Γ ⊢ Forall (And p q)).
   apply (@ND_forall_elim (Forall (And p q) :: Γ) (And p q) c) in H as H1.
-  assert(Forall (And p q) :: Γ ⊢ subst_bvar_inner 0 c (And p q)
-  = Forall (And p q) :: Γ ⊢ And (subst_bvar_inner 0 c p) (subst_bvar_inner 0 c q)). { simpl; auto. }
+  assert(Forall (And p q) :: Γ ⊢ capture_free_subst 0 c (And p q)
+  = Forall (And p q) :: Γ ⊢ And (capture_free_subst 0 c p) (capture_free_subst 0 c q)). { simpl; auto. }
   rewrite H0 in H1. clear H0.
-  apply (@ND_proj_r (Forall (And p q) :: Γ) (subst_bvar_inner 0 c p) (subst_bvar_inner 0 c q)) in H1.
+  apply (@ND_proj_r (Forall (And p q) :: Γ) (capture_free_subst 0 c p) (capture_free_subst 0 c q)) in H1.
   assumption.
 Qed.
 
@@ -713,10 +705,10 @@ Proof.
   apply (@ND_forall_i (Forall (And p q) :: Γ) p c). 2: auto.
   Assume (Forall (And p q) :: Γ ⊢ Forall (And p q)).
   apply (@ND_forall_elim (Forall (And p q) :: Γ) (And p q) c) in H as H1.
-  assert(Forall (And p q) :: Γ ⊢ subst_bvar_inner 0 c (And p q)
-  = Forall (And p q) :: Γ ⊢ And (subst_bvar_inner 0 c p) (subst_bvar_inner 0 c q)). { simpl; auto. }
+  assert(Forall (And p q) :: Γ ⊢ capture_free_subst 0 c (And p q)
+  = Forall (And p q) :: Γ ⊢ And (capture_free_subst 0 c p) (capture_free_subst 0 c q)). { simpl; auto. }
   rewrite H0 in H1. clear H0.
-  apply (@ND_proj_l (Forall (And p q) :: Γ) (subst_bvar_inner 0 c p) (subst_bvar_inner 0 c q)) in H1.
+  apply (@ND_proj_l (Forall (And p q) :: Γ) (capture_free_subst 0 c p) (capture_free_subst 0 c q)) in H1.
   assumption.
 Qed.
 
@@ -727,33 +719,33 @@ Proof.
   intros.
   apply ND_imp_i2; apply ND_imp_i2.
   set (t := fresh_evar (Forall (Implies q r) :: Forall (Implies p q) :: Γ) Falsum).
-  Assume ((subst_bvar_inner 0 t p) :: Forall (Implies q r) :: Forall (Implies p q) :: Γ ⊢ Forall (Implies p q)).
-  Assume ((subst_bvar_inner 0 t p) :: Forall (Implies q r) :: Forall (Implies p q) :: Γ ⊢ Forall (Implies q r)).
-  apply (@ND_forall_elim ((subst_bvar_inner 0 t p) :: Forall (Implies q r) :: Forall (Implies p q) :: Γ )
+  Assume ((capture_free_subst 0 t p) :: Forall (Implies q r) :: Forall (Implies p q) :: Γ ⊢ Forall (Implies p q)).
+  Assume ((capture_free_subst 0 t p) :: Forall (Implies q r) :: Forall (Implies p q) :: Γ ⊢ Forall (Implies q r)).
+  apply (@ND_forall_elim ((capture_free_subst 0 t p) :: Forall (Implies q r) :: Forall (Implies p q) :: Γ )
           (Implies p q) t) in H as H1.
-  apply (@ND_forall_elim ((subst_bvar_inner 0 t p) :: Forall (Implies q r) :: Forall (Implies p q) :: Γ )
+  apply (@ND_forall_elim ((capture_free_subst 0 t p) :: Forall (Implies q r) :: Forall (Implies p q) :: Γ )
           (Implies q r) t) in H0 as H2.
-  assert ((subst_bvar_inner 0 t p) :: Forall (Implies q r) :: Forall (Implies p q) :: Γ
-     ⊢ subst_bvar_inner 0 t (Implies p q) = (subst_bvar_inner 0 t p) :: Forall (Implies q r) :: Forall (Implies p q) :: Γ
-     ⊢  Implies (subst_bvar_inner 0 t p) (subst_bvar_inner 0 t q)). { simpl; auto. }
-  assert ((subst_bvar_inner 0 t p) :: Forall (Implies q r) :: Forall (Implies p q) :: Γ
-     ⊢ subst_bvar_inner 0 t (Implies q r) = (subst_bvar_inner 0 t p) :: Forall (Implies q r) :: Forall (Implies p q) :: Γ
-     ⊢  Implies (subst_bvar_inner 0 t q) (subst_bvar_inner 0 t r)). { simpl; auto. }
+  assert ((capture_free_subst 0 t p) :: Forall (Implies q r) :: Forall (Implies p q) :: Γ
+     ⊢ capture_free_subst 0 t (Implies p q) = (capture_free_subst 0 t p) :: Forall (Implies q r) :: Forall (Implies p q) :: Γ
+     ⊢  Implies (capture_free_subst 0 t p) (capture_free_subst 0 t q)). { simpl; auto. }
+  assert ((capture_free_subst 0 t p) :: Forall (Implies q r) :: Forall (Implies p q) :: Γ
+     ⊢ capture_free_subst 0 t (Implies q r) = (capture_free_subst 0 t p) :: Forall (Implies q r) :: Forall (Implies p q) :: Γ
+     ⊢  Implies (capture_free_subst 0 t q) (capture_free_subst 0 t r)). { simpl; auto. }
   rewrite H3 in H1. rewrite H4 in H2.
-  Assume ((subst_bvar_inner 0 t p) :: Forall (Implies q r) :: Forall (Implies p q) :: Γ ⊢ (subst_bvar_inner 0 t p)).
-  apply (@ND_imp_e (subst_bvar_inner 0 t p
-     :: Forall (Implies q r) :: Forall (Implies p q) :: Γ) (subst_bvar_inner 0 t p)) in H1.
+  Assume ((capture_free_subst 0 t p) :: Forall (Implies q r) :: Forall (Implies p q) :: Γ ⊢ (capture_free_subst 0 t p)).
+  apply (@ND_imp_e (capture_free_subst 0 t p
+     :: Forall (Implies q r) :: Forall (Implies p q) :: Γ) (capture_free_subst 0 t p)) in H1.
   2: assumption.
-  apply (@ND_imp_e (subst_bvar_inner 0 t p
-     :: Forall (Implies q r) :: Forall (Implies p q) :: Γ) (subst_bvar_inner 0 t q)) in H2.
+  apply (@ND_imp_e (capture_free_subst 0 t p
+     :: Forall (Implies q r) :: Forall (Implies p q) :: Γ) (capture_free_subst 0 t q)) in H2.
   2: assumption.
   apply ND_imp_i2 in H2.
   assert (Forall (Implies q r)
      :: Forall (Implies p q) :: Γ
-     ⊢ Implies (subst_bvar_inner 0 t p)
-         (subst_bvar_inner 0 t r) = Forall (Implies q r)
+     ⊢ Implies (capture_free_subst 0 t p)
+         (capture_free_subst 0 t r) = Forall (Implies q r)
      :: Forall (Implies p q) :: Γ
-     ⊢ (subst_bvar_inner 0 t (Implies  p r))). { simpl; auto. }
+     ⊢ (capture_free_subst 0 t (Implies  p r))). { simpl; auto. }
   rewrite H6 in H2.
   apply (@ND_forall_i (Forall (Implies q r) :: Forall (Implies p q) :: Γ) (Implies p r) t) in H2.
   assumption. auto.
@@ -786,17 +778,17 @@ Proof.
   set (c := fresh_evar Γ (Exists p)).
   apply (ND_exists_elim_small (c := c) (p := Not (Not p)) (q := Exists p)). 
   2: unfold c; reflexivity.
-  assert (subst_bvar_inner 0 c (Not (Not p)) = Not (Not (subst_bvar_inner 0 c p))). {
+  assert (capture_free_subst 0 c (Not (Not p)) = Not (Not (capture_free_subst 0 c p))). {
     simpl; auto.
   }
   rewrite H.
-  Assume (Not (Not (subst_bvar_inner 0 c p)) :: Γ ⊢ Not (Not (subst_bvar_inner 0 c p))).
-  assert (Not (Not (subst_bvar_inner 0 c p)) :: Γ
-            ⊢ Implies (Not (Not (subst_bvar_inner 0 c p)))
-                    (subst_bvar_inner 0 c p)). {
-    apply (@ND_double_negation (Not (Not (subst_bvar_inner 0 c p))::Γ) (subst_bvar_inner 0 c p)).
+  Assume (Not (Not (capture_free_subst 0 c p)) :: Γ ⊢ Not (Not (capture_free_subst 0 c p))).
+  assert (Not (Not (capture_free_subst 0 c p)) :: Γ
+            ⊢ Implies (Not (Not (capture_free_subst 0 c p)))
+                    (capture_free_subst 0 c p)). {
+    apply (@ND_double_negation (Not (Not (capture_free_subst 0 c p))::Γ) (capture_free_subst 0 c p)).
   }
-  apply (@ND_imp_e (Not (Not (subst_bvar_inner 0 c p))::Γ) (Not (Not (subst_bvar_inner 0 c p)))) in H1 as H2.
+  apply (@ND_imp_e (Not (Not (capture_free_subst 0 c p))::Γ) (Not (Not (capture_free_subst 0 c p)))) in H1 as H2.
   2: assumption.
   apply ND_exists_intro in H2. assumption.
 Qed.
@@ -804,11 +796,10 @@ Qed.
 Theorem not_Exists {Γ p} :
   Γ ⊢ Implies (Not (Exists p)) (Forall (Not p)).
 Proof.
-  Check @contrapositive.
   apply ND_imp_i2.
   assert (Not (Exists p) :: Γ ⊢ Forall (Not p)). {
     Assume (Not (Exists p) :: Γ ⊢ Not (Exists p)).
-    unfold Forall; simpl; auto. Check @contrapositive.
+    unfold Forall; simpl; auto.
     assert (Not (Exists p) :: Γ
        ⊢ Implies (Implies (Exists (Not (Not p))) (Exists p))
            (Implies (Not (Exists p)) (Not (Exists (Not (Not p)))))). { 
@@ -835,27 +826,25 @@ Proof.
   intros.
   apply ND_imp_i2.
   set (t := fresh_evar Γ (Exists p)).
-  Check @ND_exists_elim_small.
   apply (ND_exists_elim_small (Γ := Γ) (p := (Not (Not p))) (c := t)).
   2: unfold t; reflexivity.
-  assert (subst_bvar_inner 0 t (Not (Not p)) = Not (Not (subst_bvar_inner 0 t p))). { simpl; auto. }
+  assert (capture_free_subst 0 t (Not (Not p)) = Not (Not (capture_free_subst 0 t p))). { simpl; auto. }
   rewrite H.
-  Assume(Not (Not (subst_bvar_inner 0 t p)) :: Γ ⊢ Not (Not (subst_bvar_inner 0 t p))).
-  Check @ND_double_negation.
-  assert (Not (Not (subst_bvar_inner 0 t p)) :: Γ
-     ⊢ Implies (Not (Not (subst_bvar_inner 0 t p))) (subst_bvar_inner 0 t p)). {
+  Assume(Not (Not (capture_free_subst 0 t p)) :: Γ ⊢ Not (Not (capture_free_subst 0 t p))).
+  assert (Not (Not (capture_free_subst 0 t p)) :: Γ
+     ⊢ Implies (Not (Not (capture_free_subst 0 t p))) (capture_free_subst 0 t p)). {
     apply ND_double_negation.
   }
-  apply (ND_imp_e (q := subst_bvar_inner 0 t p)) in H0. 2: assumption.
+  apply (ND_imp_e (q := capture_free_subst 0 t p)) in H0. 2: assumption.
   apply ND_exists_intro in H0.
   assumption.
 Qed.
 
 Theorem forall_subst : forall (n : nat) (t : Term) (p : Formula),
-  subst_bvar_inner n t (Forall p) = Forall (subst_bvar_inner (S n) (lift (S n) 1 t) p).
+  capture_free_subst n t (Forall p) = Forall (capture_free_subst (S n) (lift (S n) 1 t) p).
 Proof.
   intros.
-  unfold Forall; unfold subst_bvar_inner; simpl; auto.
+  unfold Forall; unfold capture_free_subst; simpl; auto.
 Qed.
 End QuantifierTheorems.
 

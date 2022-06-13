@@ -65,7 +65,6 @@ end.
     Hypothesis P_Var : forall a, P (Var a).
     Hypothesis P_EConst : forall n, P (EConst n).
     Hypothesis P_Fun : forall {n} nm l, P_vector n l -> P (@Fun n nm l).
-Print list_rect.
     Fixpoint Term_rect (t : Term) : P t :=
       let fix go_vector {n} (l : Vector.t Term n) : P_vector n l :=
           match l with
@@ -89,7 +88,6 @@ Print list_rect.
     Hypothesis P_Var : forall a, P (Var a).
     Hypothesis P_EConst : forall n, P (EConst n).
     Hypothesis P_Fun : forall {n} nm l, P_vector n l -> P (@Fun n nm l).
-Print list_rect.
     Fixpoint Term_rect (t : Term) : P t :=
       let fix go_vector {n} (l : Vector.t Term n) : P_vector n l :=
           match l with
@@ -277,7 +275,7 @@ Proof.
   - unfold eqb; apply V.eqb_refl.
   - unfold eqb; apply Nat.eqb_refl.
   - set (P := (fun t : Term => eqb t t = true)).
-    fold P in H. Check Vector.Forall_forall.
+    fold P in H.
     assert (forall a : Term, VectorDef.In a t -> P a). {
       apply (Vector.Forall_forall Term P n t). assumption.
     }
@@ -313,7 +311,6 @@ Proof.
     induction args1.
     + destruct args2. reflexivity. contradict H3. unfold args_eqb. discriminate.
     + destruct args2. contradict H3; unfold args_eqb; discriminate.
-      Check args_eqb_ind.
       
       apply (args_eqb_ind n h h0 args1 args2) in H3 as H6.
     assert (eqb n n1 = true). {
@@ -349,7 +346,6 @@ Proof.
     rewrite H0 in H1. rewrite H2 in H1. simpl in H1.
     apply String.eqb_eq in H0.
     split. assumption.
-    Check Vector.eqb_eq.
     apply (Vector.eqb_eq Term term_eqb in H1. simpl; auto.
 
 Theorem term_dec (x y : Term) : {x = y} + {x <> y}.
@@ -398,8 +394,6 @@ Global Instance substTerm : Subst Term :=
 {
   subst (x : V) (t : Term) (e : Term) := tsubst x t e
 }.
-
-Compute (subst (BVar 1) (Fun "c" []) (Fun "f" [Var (BVar 1) ; Var (FVar "x")])).
 
 Example term_subst_1 : subst (BVar 1) (Fun "c" []) (Fun "f" [Var (BVar 1) ; Var (FVar "x")])
 = Fun "f" [(Fun "c" []) ; Var (FVar "x")].
