@@ -40,6 +40,12 @@ has the side condition that in [Implies p q] either [p] is a sentence (i.e.,
 a ground term) or [q] is not a sentence. Johnstone's notes on logic alerted me
 to this, and the more I think about it, the more I believe he is correct. *)
 
+(** Also important to note (to future me), since we are using de Bruijn indices
+which bind from the innermost quantifiers outwards, we do not need
+to [unshift] in our quantifier elimination rules. (Because we
+humans conventionally work from the outer-most quantifiers, inwards.)
+So there is no need to worry about unshifting. *)
+
 Import ListNotations.
 Reserved Notation "Γ ⊢ P" (no associativity, at level 61).
 Inductive deducible : list Formula -> Formula -> Prop :=
@@ -877,7 +883,31 @@ Proof.
   assumption.
 Qed.
 
+Theorem ND_Iff_intro {Γ p q} :
+  p::Γ ⊢ q -> q::Γ ⊢ p -> Γ ⊢ Iff p q.
+Proof.
+  intros.
+  apply ND_imp_i2 in H; apply ND_imp_i2 in H0.
+  apply ND_and_intro. assumption. assumption.
+Qed.
 
+Theorem ND_Iff_elim_l {Γ p q} :
+  Γ ⊢ p -> Γ ⊢ Iff p q -> Γ ⊢ q.
+Proof.
+  intros.
+  apply ND_proj_l in H0 as H1.
+  apply (ND_imp_e (p := p) (q := q)) in H1.
+  assumption. assumption.
+Qed.
+
+Theorem ND_Iff_elim_r {Γ p q} :
+  Γ ⊢ q -> Γ ⊢ Iff p q -> Γ ⊢ p.
+Proof.
+  intros;
+  apply ND_proj_r in H0 as H1;
+  apply (ND_imp_e (p := q) (q := p)) in H1.
+  assumption. assumption.
+Qed.
 
 Theorem consistency : not (proves Falsum).
 Proof.

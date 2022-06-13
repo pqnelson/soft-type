@@ -701,3 +701,10 @@ Lemma not_some_not_is_every {Γ} :
     apply (@ND_imp_e ((Not (Every (S n) p)) :: Γ) (Not (Every (S n) p))) in H6.
     2: assumption.
 *)
+
+
+
+Theorem move_every_from_antecedent {Γ} :
+  forall (m n : nat) (p q : Formula),
+  Γ ⊢ Every m (Implies p (Every n q)) -> Γ ⊢ Every (m + n) (Implies (lift n 0 p) q).
+Admitted.
