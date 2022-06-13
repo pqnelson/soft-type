@@ -31,6 +31,11 @@ a [Radix] type.
 Definition SoftType : Type := (list Adjective)*Radix.
 Definition Star : SoftType := (List.nil, Ast).
 
+Definition arity (T : SoftType) : nat :=
+  match T with
+  | (_, R) => Radix.arity R
+  end.
+
 Global Instance EqSoftType : Eq SoftType := {
   eqb (T1 T2 : SoftType) :=
   match T1,T2 with
@@ -51,6 +56,10 @@ Global Instance liftSoftType : Lift SoftType :=
   lift (c d : nat) (T : SoftType) :=
   match T with
   | (adjs, R) => (List.map (fun (a : Adjective) => (lift c d a)) adjs, lift c d R)
+  end;
+  unlift (c d : nat) (T : SoftType) :=
+  match T with
+  | (adjs, R) => (List.map (fun (a : Adjective) => (unlift c d a)) adjs, unlift c d R)
   end
 }.
 

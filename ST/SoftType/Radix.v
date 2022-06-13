@@ -31,6 +31,12 @@ Inductive Radix : Type :=
 | Ast : Radix
 | Mode : forall (n : nat), name -> Vector.t Term n -> Radix.
 
+Definition arity (R : Radix) : nat :=
+  match R with
+  | Ast => 0
+  | Mode n _ _ => n
+  end.
+
 Definition radix_is_mode (R : Radix) : Prop :=
   match R with
   | Mode _ _ _ => True
@@ -70,6 +76,11 @@ Global Instance liftRadix : Lift Radix :=
   match R with
   | Ast => R
   | Mode n s args => Mode n s (Vector.map (fun (a : Term) => lift c d a) args)
+  end;
+  unlift (c d : nat) (R : Radix) :=
+  match R with
+  | Ast => R
+  | Mode n s args => Mode n s (Vector.map (fun (a : Term) => unlift c d a) args)
   end
 }.
 

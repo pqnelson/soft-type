@@ -570,7 +570,8 @@ end.
 
 Global Instance liftTerm : Lift Term :=
 {
-  lift (c d : nat) (t : Term) := term_map_var (lift c d) t
+  lift (c d : nat) (t : Term) := term_map_var (lift c d) t;
+  unlift (c d : nat) (t : Term) := term_map_var (unlift c d) t
 }.
 
 Definition tlift := lift.
@@ -602,6 +603,62 @@ Proof.
     }
     rewrite H1. unfold id. reflexivity.
 Admitted.
+
+Require Import Coq.Vectors.VectorSpec.
+
+Lemma bigger_lift_is_id : forall (i k1 k2 : nat) (t : Term), k1 < k2 -> lift k1 i t = t -> lift k2 i t = t.
+Proof.
+  intros. induction t.
+  - unfold lift; unfold liftTerm; unfold term_map_var.
+    assert(lift k1 i v = v). {
+      unfold lift in H0; unfold liftTerm in H0; unfold term_map_var in H0.
+      injection H0. simpl; auto.
+    }
+    apply V.bigger_lift_is_id with (x := v) (i := i) (k1 := k1) (k2 := k2) in H as H2.
+    2: assumption.
+    rewrite H2; reflexivity.
+  - simpl; auto.
+  - rename t into args.
+    unfold lift; unfold liftTerm.
+    assert(term_map_var (lift k2 i) (Fun n0 args) = Fun n0 (Vector.map (lift k2 i) args)). {
+      unfold term_map_var; simpl; auto.
+    } rewrite H2.
+    rewrite Vector.Forall_forall with (P := (fun t : Term =>
+        lift k1 i t = t -> lift k2 i t = t)) in H1.
+    assert (map (lift k2 i) args = args). {
+      induction args.
+      - simpl; auto.
+      - assert (map (lift k2 i) (h :: args) = (lift k2 i h)::(map (lift k2 i) args)). {
+          simpl; auto.
+        } rewrite H3.
+        assert (map (lift k2 i) args = args) as IH. admit. 
+          (* It's true, but too much work to prove it *)
+        rewrite IH.
+        assert (lift k2 i h = h). {
+          assert (Vector.In h (h::args)). {  apply Vector.In_cons_hd. }
+          assert (lift k1 i h = h). { admit. } (* It's true, but too much work to prove it *)
+          apply H1 in H4. assumption. assumption.
+        }
+        rewrite H4. reflexivity.
+    }
+    rewrite H3. reflexivity.
+Admitted.
+
+Corollary bigger_lift_is_id_vector : forall (i k1 k2 n : nat) (args : Vector.t Term n), 
+  k1 < k2 -> 
+  Vector.map (lift k1 i) args = args -> 
+  Vector.map (lift k2 i) args = args.
+Admitted.
+
+(*
+  - reflexivity.
+  - bdestruct (Nat.ltb n k1).
+  + apply case_lift_is_id; simpl; auto. lia.
+  + apply case_lift_is_not_id with (i := i) in H1 as H2.
+    rewrite H0 in H2. inversion H2. rewrite <- H4. rewrite <- H4.
+    apply Tauto.if_same.
+Qed.
+*)
 
 Definition term_is_fun (t : Term) : Prop :=
   match t with

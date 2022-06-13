@@ -26,6 +26,21 @@ Definition Not (p : Formula) := Implies p Falsum.
 Definition Verum : Formula := Implies Falsum Falsum.
 Definition Forall (p : Formula) := Not (Exists (Not p)).
 
+Definition is_and (p : Formula) : bool :=
+match p with
+| And _ _ => true
+| _ => false
+end.
+
+Definition Is_and (p : Formula) : Prop :=
+match p with
+| And _ _ => True
+| _ => False
+end.
+
+Definition Iff (a b : Formula) :=
+  And (Implies a b) (Implies b a).
+
 Fixpoint formula_contains_bvar (index : nat) (A : Formula) : Prop :=
 match A with
   | Falsum => False
@@ -141,9 +156,33 @@ Fixpoint lift_formula (c d : nat) (phi : Formula) : Formula :=
   | Exists fm => Exists (lift_formula (S c) d fm)
   end.
 
+Theorem lift_id : forall (A : Formula),
+  lift_formula 0 0 A = A.
+Proof.
+  intros. induction A.
+  - simpl; auto.
+  - unfold lift_formula. rewrite Predicate.lift_id. reflexivity.
+  - simpl; auto; rewrite IHA1; rewrite IHA2; reflexivity.
+  - simpl; auto; rewrite IHA1; rewrite IHA2; reflexivity.
+  - simpl; auto; rewrite IHA1; rewrite IHA2; reflexivity.
+  - simpl; auto. 
+(* This requires some tricky argument, but it's true. *)
+Admitted.
+
+Fixpoint unlift_formula (c d : nat) (phi : Formula) : Formula :=
+  match phi with
+  | Falsum => phi
+  | Atom pred => Atom (unlift c d pred)
+  | And fm1 fm2 => And (unlift_formula c d fm1) (unlift_formula c d fm2)
+  | Or fm1 fm2 => Or (unlift_formula c d fm1) (unlift_formula c d fm2)
+  | Implies fm1 fm2 => Implies (unlift_formula c d fm1) (unlift_formula c d fm2)
+  | Exists fm => Exists (unlift_formula (S c) d fm)
+  end.
+
 Global Instance LiftFormula : Lift Formula :=
 {
-  lift := lift_formula
+  lift := lift_formula;
+  unlift := unlift_formula
 }.
 (**
 We would encode $\forall x\exists y P(x,y)$ as 

@@ -54,6 +54,14 @@ Global Instance liftJudgementType : Lift JudgementType := {
   | Subtype T1 T2 => Subtype (lift c d T1) (lift c d T2)
   | Inhabited T => Inhabited (lift c d T)
   | HasAttribute a T => HasAttribute (lift c d a) (lift c d T)
+  end;
+  unlift (c d : nat) (J : JudgementType) :=
+  match J with
+  | CorrectContext => J
+  | Esti tm Tp => Esti (unlift c d tm) (unlift c d Tp)
+  | Subtype T1 T2 => Subtype (unlift c d T1) (unlift c d T2)
+  | Inhabited T => Inhabited (unlift c d T)
+  | HasAttribute a T => HasAttribute (unlift c d a) (unlift c d T)
   end
 }.
 

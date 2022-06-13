@@ -54,6 +54,10 @@ Global Instance liftAttr : Lift Attribute :=
   lift (c d : nat) (a : Attribute) :=
   match a with
   | Attr n s args => Attr n s (Vector.map (fun (a : Term) => lift c d a) args)
+  end;
+  unlift (c d : nat) (a : Attribute) :=
+  match a with
+  | Attr n s args => Attr n s (Vector.map (fun (a : Term) => unlift c d a) args)
   end
 }.
 

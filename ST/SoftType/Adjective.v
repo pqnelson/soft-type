@@ -55,6 +55,11 @@ Global Instance liftAdj : Lift Adjective :=
   match alpha with
   | Pos a => Pos (lift c d a)
   | Neg a => Neg (lift c d a)
+  end;
+  unlift (c d : nat) (alpha : Adjective) :=
+  match alpha with
+  | Pos a => Pos (unlift c d a)
+  | Neg a => Neg (unlift c d a)
   end
 }.
 

@@ -129,15 +129,27 @@ wherever a [BVar] can occur (and wherever a [Term] may occur), we will use a
 typeclass to handle this. *)
 
 Class Lift A := {
-  lift : nat -> nat -> A -> A
+  lift : nat -> nat -> A -> A;
+  unlift : nat -> nat -> A -> A
 }.
 
 Definition shift {A : Type} `{Lift A} (a : A) : A := lift 0 1 a.
+Definition unshift {A : Type} `{Lift A} (a : A) : A := unlift 0 1 a.
+
 Global Instance VLift : Lift V := {
   lift (cutoff depth : nat) (x : V) :=
   match x with
   | FVar nm => x
   | BVar n => if (* lt_dec n cutoff *) Nat.ltb n cutoff then x else BVar (n+depth)
+  end;
+  unlift (cutoff depth : nat) (x : V) :=
+  match depth with
+  | 0 => x
+  | S d' => match x with
+            | FVar nm => x
+            | BVar n => if Nat.ltb n cutoff then x 
+                        else BVar (n - depth)
+            end
   end
 }.
 
@@ -176,6 +188,17 @@ Proof.
   intros. simpl. bdestruct (Nat.ltb n k).
   - reflexivity.
   - contradict H. lia.
+Qed.
+
+Corollary bigger_lift_is_id : forall (i k1 k2 : nat) (x : V), k1 < k2 -> lift k1 i x = x -> lift k2 i x = x.
+Proof.
+  intros. simpl. destruct x.
+  - reflexivity.
+  - bdestruct (Nat.ltb n k1).
+  + apply case_lift_is_id; simpl; auto. lia.
+  + apply case_lift_is_not_id with (i := i) in H1 as H2.
+    rewrite H0 in H2. inversion H2. rewrite <- H4. rewrite <- H4.
+    apply Tauto.if_same.
 Qed.
 
 Example shift_is_not_id : shift (BVar 0) = (BVar 1).

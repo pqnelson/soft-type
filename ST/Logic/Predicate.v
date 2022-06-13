@@ -100,8 +100,51 @@ Global Instance LiftPred : Lift Predicate :=
   lift (c d : nat) (p : Predicate) :=
   match p with
   | P n s args => P n s (Vector.map (fun (a : Term) => lift c d a) args)
+  end;
+  unlift (c d : nat) (p : Predicate) :=
+  match p with
+  | P n s args => P n s (Vector.map (fun (a : Term) => unlift c d a) args)
   end
 }.
+
+Require Import Coq.Logic.Eqdep_dec.
+
+Theorem lift_id : forall (p : Predicate),
+  lift 0 0 p = p.
+Proof. intros. destruct p. rename t into args.
+  unfold lift; unfold LiftPred.
+  assert (Vector.map (fun a : Term => lift 0 0 a) args = args). {
+    induction args.
+    - simpl; auto.
+    - assert (Vector.map (fun a : Term => lift 0 0 a) (h::args)
+               = ((fun a : Term => lift 0 0 a) h)::(Vector.map (fun a : Term => lift 0 0 a) args)). {
+        simpl; auto.
+      }
+      rewrite H. rewrite IHargs.
+      rewrite Term.term_zero_lift_is_id. unfold id. reflexivity.
+  }
+  rewrite H; reflexivity.
+Qed.
+
+Require Import Coq.Logic.Eqdep_dec.
+
+Lemma bigger_lift_is_id : forall (i k1 k2 : nat) (p : Predicate),
+  k1 < k2 -> lift k1 i p = p -> lift k2 i p = p.
+Proof.
+  intros. destruct p.
+  unfold lift; unfold LiftPred. rename t into args.
+  assert (Vector.map (fun (a : Term) => lift k1 i a) args = args). {
+    unfold lift in H0; unfold LiftPred in H0.
+    inversion H0. apply inj_pair2_eq_dec in H2. rewrite H2.
+    2: decide equality.
+    unfold lift; unfold liftTerm. simpl; auto.
+  }
+  assert (Vector.map (fun (a : Term) => lift k2 i a) args = args). {
+    apply bigger_lift_is_id_vector with (k2 := k2) in H1 as IH.
+    simpl; auto. assumption.
+  }
+  rewrite H2; reflexivity.
+Qed.
 
 Global Instance FreshPredicate : Fresh Predicate := {
   fresh (c : Term) (p : Predicate) :=
