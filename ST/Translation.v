@@ -101,6 +101,22 @@ match lc with
 | List.cons T tl => Forall (Implies (translate T) (translate_antecedent tl j))
 end.
 
+Compute (translate_antecedent [(mk_mode "T1" []%vector) ; (mk_mode "T2" [(Var (BVar 0))]%vector)]%list
+(Esti (Fun "f" [(Var (BVar 1));(Var (BVar 0))]) (mk_mode "T3" [(Var (BVar 0));(Var (BVar 1))]%vector))).
+
+(* Translate [[(x : T1, y : T2(x))](f(x,y) : T3(y,x))]. *)
+(* Expected: Forall x (Forall y (|T1|(x) /\ |T2|(y,x) -> |T3|(f(x,y), y, x)))
+Or namelessly: Forall (Forall (|T1|(1) /\ |T2|(0,1) -> |T3|(f(1,0), 0,1))). *)
+(* XXX Currently broken, so I goofed somewhere :( *)
+Example translate_antecedent_ex1 : 
+(translate_antecedent [(mk_mode "T1" []%vector) ; (mk_mode "T2" [(Var (BVar 0))]%vector)]%list
+(Esti (Fun "f" [(Var (BVar 1));(Var (BVar 0))]) (mk_mode "T3" [(Var (BVar 0));(Var (BVar 1))]%vector)))
+= Forall (Forall (Implies (And (Atom (P 1 "Mode_T1" [Var (BVar 1)]))
+                               (Atom (P 2 "Mode_T2" [Var (BVar 1); Var (BVar 0)])))
+                          (Atom (P 3 "Mode_T3" [Fun "f" [Var (BVar 1); Var (BVar 0)]; Var (BVar 0); Var (BVar 1)])))).
+Admitted.
+
+
 Definition translate_definition (defn : LocalContext*JudgementType) : Formula :=
 match defn with
 | (lc, J) => translate_antecedent lc J

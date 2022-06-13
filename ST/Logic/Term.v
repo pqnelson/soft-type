@@ -6,7 +6,10 @@ Require Import Coq.Vectors.Vector.
 Require Import Coq.Arith.PeanoNat.
 Require Import Coq.Bool.Bool.
 Require Import Coq.Logic.Classical_Prop.
-From ST Require Import Vector.
+Require Import Coq.Logic.FunctionalExtensionality.
+Require Export RelationClasses.
+Require Export Morphisms.
+From ST Require Import Vector EVarsScratchwork.
 From ST Require Import Logic.V.
 Import ListNotations.
 Import VectorNotations.
@@ -328,6 +331,7 @@ Proof.
    simpl; auto. unfold eqb in H; unfold EqTerm in H; unfold term_eqb in H. bdestruct (eqb v v0).
   ++ 
 Qed.
+*)
 (*
 Lemma fun_eqb (n : nat) (s1 s2 : name) (args1 : Vector.t Term n) (args2 : Vector.t Term n) :
   eqb (@Fun n s1 args1) (@Fun n s2 args2) = true <-> (s1 = s2 /\ args1 = args2).
