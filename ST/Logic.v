@@ -866,6 +866,30 @@ Proof.
 Qed.
 
 
+
+Theorem ND_and_context {Γ p q r} :
+  (And p q)::Γ ⊢ r <-> p::q::Γ ⊢ r.
+Proof.
+  split.
+- intros. apply ND_imp_i2 in H; apply ND_curry in H.
+  Assume (p :: q :: Γ ⊢ p).
+  assert (Γ ⊆ p :: q :: Γ). { apply subcontext_weaken; apply subcontext_weaken; prove_subcontext. }
+  apply (@weakening Γ (p :: q :: Γ)) in H. 2: assumption.
+  apply (@ND_imp_e (p :: q :: Γ) p (Implies q r)) in H. 2: apply ND_assume; prove_In.
+  apply (@ND_imp_e (p :: q :: Γ) q r) in H. 2: apply ND_assume; prove_In.
+  assumption.
+- intros. apply ND_imp_i2 in H; apply ND_imp_i2 in H. apply ND_uncurry in H.
+  assert (Γ ⊆ (And p q) :: Γ). { apply subcontext_weaken; prove_subcontext. }
+  apply (@weakening Γ ((And p q) :: Γ)) in H. 2: assumption.
+  Assume (And p q :: Γ ⊢ And p q).
+  assert (And p q :: Γ ⊢ Implies (And p q) (And q p)). { apply ND_and_commutative. }
+  apply (@ND_imp_e (And p q :: Γ) (And p q)) in H2. 2: assumption.
+  apply (@ND_imp_e (And p q :: Γ) (And q p)) in H. 2: assumption.
+  assumption.
+Qed.
+
+
+
 Theorem consistency : not (proves Falsum).
 Proof.
   unfold not; intro.

@@ -13,7 +13,7 @@ Require Import List.
 Import ListNotations.
 Open Scope string_scope.
 From ST Require Import Vector.
-From ST Require Import EVarsScratchwork Vector Logic.
+From ST Require Import EVarsScratchwork Logic.
 Import VectorNotations.
 
 Fixpoint Every (n : nat) (p : Formula) : Formula :=

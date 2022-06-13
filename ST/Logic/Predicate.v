@@ -12,7 +12,7 @@ Require Export Morphisms.
 Require Import List.
 Import ListNotations.
 Open Scope string_scope.
-From ST Require Export SoftType Logic.V Logic.Term.
+From ST Require Import Logic.V Logic.Term ST.SoftType.
 From ST Require Import EVarsScratchwork Vector.
 Import VectorNotations.
 (** * Natural Deduction
@@ -79,6 +79,8 @@ Global Instance substPred : Subst Predicate :=
   | P n s args => P n s (Vector.map (fun (arg : Term) => subst x t arg) args)
   end
 }.
+
+Open Scope string_scope.
 
 Example pred_subst_1 : subst (BVar 0) (Fun "c" []) (P 3 "P" [Var (BVar 1); Var (BVar 0); Fun "f" [Var (BVar 0); Var (FVar "y")]])
 = (P 3 "P" [Var (BVar 1); (Fun "c" []); Fun "f" [(Fun "c" []); Var (FVar "y")]]).

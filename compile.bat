@@ -1,0 +1,21 @@
+coqc "-topfile" "\src\soft-type\ST\Vector.v" "-R" "C:\src\soft-type" "ST" "\src\soft-type\ST\Vector.v"
+coqc "-topfile" "\src\soft-type\ST\EVarsScratchwork.v" "-R" "C:\src\soft-type" "ST" "\src\soft-type\ST\EVarsScratchwork.v"
+
+coqc "-topfile" "\src\soft-type\ST\Logic\V.v" "-R" "C:\src\soft-type" "ST" "\src\soft-type\ST\Logic\V.v"
+coqc "-topfile" "\src\soft-type\ST\Logic\Term.v" "-R" "C:\src\soft-type" "ST" "\src\soft-type\ST\Logic\Term.v"
+
+coqc "-topfile" "\src\soft-type\ST\SoftType\Radix.v" "-R" "C:\src\soft-type" "ST" "\src\soft-type\ST\SoftType\Radix.v"
+coqc "-topfile" "\src\soft-type\ST\SoftType\Attribute.v" "-R" "C:\src\soft-type" "ST" "\src\soft-type\ST\SoftType\Attribute.v"
+coqc "-topfile" "\src\soft-type\ST\SoftType\Adjective.v" "-R" "C:\src\soft-type" "ST" "\src\soft-type\ST\SoftType\Adjective.v"
+coqc "-topfile" "\src\soft-type\ST\SoftType\SoftType.v" "-R" "C:\src\soft-type" "ST" "\src\soft-type\ST\SoftType\SoftType.v"
+coqc "-topfile" "\src\soft-type\ST\SoftType\JudgementType.v" "-R" "C:\src\soft-type" "ST" "\src\soft-type\ST\SoftType\JudgementType.v"
+coqc "-topfile" "\src\soft-type\ST\SoftType\LocalContext.v" "-R" "C:\src\soft-type" "ST" "\src\soft-type\ST\SoftType\LocalContext.v"
+coqc "-topfile" "\src\soft-type\ST\SoftType\GlobalContext.v" "-R" "C:\src\soft-type" "ST" "\src\soft-type\ST\SoftType\GlobalContext.v"
+coqc "-topfile" "\src\soft-type\ST\SoftType.v" "-R" "C:\src\soft-type" "ST" "\src\soft-type\ST\SoftType.v"
+
+coqc "-topfile" "\src\soft-type\ST\Logic\Predicate.v" "-R" "C:\src\soft-type" "ST" "\src\soft-type\ST\Logic\Predicate.v"
+coqc "-topfile" "\src\soft-type\ST\Logic\Formula.v" "-R" "C:\src\soft-type" "ST" "\src\soft-type\ST\Logic\Formula.v"
+coqc "-topfile" "\src\soft-type\ST\Logic\Subcontext.v" "-R" "C:\src\soft-type" "ST" "\src\soft-type\ST\Logic\Subcontext.v"
+coqc "-topfile" "\src\soft-type\ST\logic.v" "-R" "C:\src\soft-type" "ST" "\src\soft-type\ST\Logic.v"
+coqc "-topfile" "\src\soft-type\ST\VariadicQuantifiers.v" "-R" "C:\src\soft-type" "ST" "\src\soft-type\ST\VariadicQuantifiers.v"
+coqc "-topfile" "\src\soft-type\ST\Translation.v" "-R" "C:\src\soft-type" "ST" "\src\soft-type\ST\Translation.v"

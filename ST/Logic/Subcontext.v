@@ -12,7 +12,7 @@ Require Export Morphisms.
 Require Import List.
 Import ListNotations.
 Open Scope string_scope.
-From ST Require Import EVarsScratchwork Vector SoftType.
+From ST Require Import EVarsScratchwork Vector ST.SoftType.
 From ST Require Export Logic.V Logic.Term Logic.Predicate Logic.Formula.
 
 Definition subcontext (Γ1 Γ2 : list Formula) : Prop :=
