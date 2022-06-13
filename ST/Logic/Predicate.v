@@ -1,19 +1,10 @@
 Require Import String.
 Require Import Nat.
-Require Import Lia.
-Require Export Coq.Arith.Compare_dec.
-Require Import Coq.Arith.Peano_dec.
-Require Import Coq.Logic.Eqdep_dec.
-Require Import Coq.Logic.Classical_Pred_Type.
-Require Import Coq.Logic.Classical_Prop.
 Require Import Coq.Vectors.Vector.
-Require Export RelationClasses.
-Require Export Morphisms.
 Require Import List.
 Import ListNotations.
-Open Scope string_scope.
 From ST Require Import Logic.V Logic.Term ST.SoftType.
-From ST Require Import EVarsScratchwork Vector.
+From ST Require Import EVarsScratchwork.
 Import VectorNotations.
 (** * Natural Deduction
 

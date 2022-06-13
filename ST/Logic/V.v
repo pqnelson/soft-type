@@ -73,12 +73,6 @@ Inductive V :=
 | FVar : name -> V
 | BVar : nat -> V.
 
-Theorem var_dec (x y : V) : {x = y} + {x <> y}.
-Proof.
-  decide equality. apply string_dec. 
-  decide equality.
-Qed.
-
 Global Instance VEq : Eq V := {
   eqb (x y : V) :=
   match x, y with
@@ -88,14 +82,14 @@ Global Instance VEq : Eq V := {
   end
 }.
 
-Lemma V_eqb_refl : forall a : V, eqb a a = true.
+Lemma eqb_refl : forall a : V, eqb a a = true.
 Proof.
   intros. destruct a.
   - unfold eqb; unfold VEq. simpl; auto. apply String.eqb_refl.
   - unfold eqb; unfold VEq. simpl; auto. apply Nat.eqb_refl.
 Qed.
 
-Lemma V_eq_dec : forall a b : V, {a = b} + {a <> b}.
+Lemma eq_dec : forall a b : V, {a = b} + {a <> b}.
 Proof. decide equality.
   try (left; reflexivity); try (right; congruence).
   - apply string_dec.
@@ -118,7 +112,7 @@ Proof. intros.
   apply NNPP in H. assumption. apply PPNN; assumption. 
 Qed.
 
-Lemma V_eqb_eq : forall a b : V, eqb a b = true <-> a = b.
+Lemma eqb_eq : forall a b : V, eqb a b = true <-> a = b.
 Proof.
   intros. split.
   - intros. destruct a.
@@ -127,7 +121,7 @@ Proof.
   + unfold eqb in H; unfold VEq in H. destruct b. discriminate.
     apply Nat.eqb_eq in H.
     rewrite H; reflexivity.
-  - intros. rewrite H; apply V_eqb_refl.
+  - intros. rewrite H; apply eqb_refl.
 Qed.
 
 (** We now need to handle [lift]-ing a bound variable. Since this will occur

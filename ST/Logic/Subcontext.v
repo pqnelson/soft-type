@@ -1,23 +1,12 @@
-Require Import String.
-Require Import Nat.
-Require Import Lia.
-Require Export Coq.Arith.Compare_dec.
-Require Import Coq.Arith.Peano_dec.
-Require Import Coq.Logic.Eqdep_dec.
-Require Import Coq.Logic.Classical_Pred_Type.
-Require Import Coq.Logic.Classical_Prop.
-Require Import Coq.Vectors.Vector.
 Require Export RelationClasses.
 Require Export Morphisms.
 Require Import List.
 Import ListNotations.
-Open Scope string_scope.
-From ST Require Import EVarsScratchwork Vector ST.SoftType.
-From ST Require Export Logic.V Logic.Term Logic.Predicate Logic.Formula.
+From ST Require Export Logic.Formula.
 
 Definition subcontext (Γ1 Γ2 : list Formula) : Prop :=
   forall P, List.In P Γ1 -> List.In P Γ2.
-  
+
 Definition supcontext (Γ1 Γ2 : list Formula) : Prop :=
   subcontext Γ2 Γ1.
 Infix "⊆" := subcontext (no associativity, at level 70).
@@ -72,16 +61,20 @@ Qed.
 Lemma subcontext_weaken : forall (Γ1 Γ2 : list Formula) (P : Formula),
   Γ1 ⊆ Γ2 -> Γ1 ⊆ P :: Γ2.
 Proof.
-  intros. assert (Γ2 ⊆ (List.cons P Γ2)). apply cons_subcontext.
+  intros. assert (Γ2 ⊆ (List.cons P Γ2)). { apply cons_subcontext. }
   apply (subcontext_trans Γ1 Γ2 (P :: Γ2)) in H0. assumption. assumption.
 Qed.
   
 Lemma subcontext_weaken2 : forall (Γ1 Γ2 : list Formula) (P : Formula),
   Γ1 ⊆ Γ2 -> P :: Γ1 ⊆ P :: Γ2.
 Proof.
-  intros. assert (Γ2 ⊆ (List.cons P Γ2)). apply cons_subcontext.
-  apply subcontext_cons. split; unfold List.In; auto. apply (subcontext_trans Γ1 Γ2 (P :: Γ2)).
-  assumption. assumption.
+  intros. 
+  assert (Γ2 ⊆ (List.cons P Γ2)). { apply cons_subcontext. }
+  apply subcontext_cons. 
+  split; unfold List.In; auto. 
+  apply (subcontext_trans Γ1 Γ2 (P :: Γ2)).
+  - assumption.
+  - assumption.
 Qed.
 
 Lemma subcontext_reflex : forall (Γ : list Formula), Γ ⊆ Γ.
@@ -124,8 +117,6 @@ List.Forall P (a :: l) <-> P a /\ List.Forall P l.
       intros. now split; [intro H; inversion H|constructor].
     Qed.
 *)
-
-Check Coq.Lists.List.Forall_cons_iff.
 
 (* Suppose [Subcontext Γ1 Γ2]. If [fresh c Γ2], then [fresh c Γ1]. *)
 Global Instance fresh_cons_proper :

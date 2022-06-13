@@ -3,20 +3,9 @@ Require Import Lia.
 Require Import List.
 Require Import Nat.
 Require Import Coq.Vectors.Vector.
-Require Import Coq.Vectors.VectorEq.
-Require Import Coq.Arith.Bool_nat.
-Require Export Coq.Arith.Compare_dec.
-Require Import Coq.Arith.EqNat.
 Require Import Coq.Arith.PeanoNat.
-Require Import Coq.Arith.Peano_dec.
 Require Import Coq.Bool.Bool.
 Require Import Coq.Logic.Classical_Prop.
-Require Import Coq.Logic.Eqdep_dec.
-Require Import Coq.Logic.FunctionalExtensionality.
-Require Export RelationClasses.
-Require Export Morphisms.
-Require Import Program.
-From ST Require Import EVarsScratchwork.
 From ST Require Import Vector.
 From ST Require Import Logic.V.
 Import ListNotations.
@@ -278,10 +267,11 @@ Proof.
   rewrite H9 in H4. assumption.
 Qed.
 
+(*
 Theorem term_eqb_refl (t : Term) : eqb t t = true.
 Proof.
   induction t.
-  - unfold eqb; apply V_eqb_refl.
+  - unfold eqb; apply V.eqb_refl.
   - unfold eqb; apply Nat.eqb_refl.
   - set (P := (fun t : Term => eqb t t = true)).
     fold P in H. Check Vector.Forall_forall.
@@ -295,12 +285,11 @@ Proof.
     apply fun_eqb_step. assumption. assumption.
 Qed.
 
-(*
-Theorem term_eqb_eq (t1 t2 : Term) : eqb t1 t2 = true -> t1 = t2.
+Theorem eqb_eq (t1 t2 : Term) : eqb t1 t2 = true -> t1 = t2.
 Proof.
   intros. induction t1.
   - unfold eqb in H; unfold EqTerm in H; unfold term_eqb in H. destruct t2.
-  + apply V_eqb_eq in H. rewrite H; reflexivity.
+  + apply V.eqb_eq in H. rewrite H; reflexivity.
   + discriminate.
   + discriminate.
   - unfold eqb in H; unfold EqTerm in H; unfold term_eqb in H. destruct t2. discriminate.
@@ -327,7 +316,7 @@ Proof.
     assert (eqb n n1 = true). {
       destruct H. unfold andb.
     }
-  + assert ({v = v0} + {v <> v0}). { apply V_eq_dec. } destruct H0.
+  + assert ({v = v0} + {v <> v0}). { apply V.eq_dec. } destruct H0.
     rewrite e; reflexivity.
     contradiction.
    destruct v; destruct v0. unfold eqb in H; unfold VEq in H. inversion H.
@@ -339,7 +328,7 @@ Proof.
    simpl; auto. unfold eqb in H; unfold EqTerm in H; unfold term_eqb in H. bdestruct (eqb v v0).
   ++ 
 Qed.
-
+(*
 Lemma fun_eqb (n : nat) (s1 s2 : name) (args1 : Vector.t Term n) (args2 : Vector.t Term n) :
   eqb (@Fun n s1 args1) (@Fun n s2 args2) = true <-> (s1 = s2 /\ args1 = args2).
 Proof.

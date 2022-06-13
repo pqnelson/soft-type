@@ -1,18 +1,10 @@
 Require Import String.
 Require Import Nat.
-Require Import Lia.
-Require Export Coq.Arith.Compare_dec.
-Require Import Coq.Arith.Peano_dec.
-Require Import Coq.Logic.Eqdep_dec.
-Require Import Coq.Logic.Classical_Pred_Type.
-Require Import Coq.Logic.Classical_Prop.
 Require Import Coq.Vectors.Vector.
-Require Export RelationClasses.
-Require Export Morphisms.
 Require Import List.
 Import ListNotations.
 Open Scope string_scope.
-From ST Require Import EVarsScratchwork Vector.
+From ST Require Import EVarsScratchwork.
 From ST Require Export ST.SoftType.
 From ST Require Export Logic.V Logic.Term Logic.Predicate.
 Import VectorNotations.
@@ -80,7 +72,7 @@ Global Instance EqFormula : Eq Formula := {
   eqb := eq_formula
 }.
 
-Theorem Formula_eq_dec : forall a b : Formula, {a = b} + {a <> b}.
+Theorem eq_dec : forall a b : Formula, {a = b} + {a <> b}.
 Proof.
   decide equality. apply Predicate.eq_dec.
 Defined.
