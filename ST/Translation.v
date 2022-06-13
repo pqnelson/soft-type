@@ -83,6 +83,7 @@ use in translating judgements. *)
 Global Instance TranslatableSoftType : Translatable SoftType := {
   translate (T : SoftType) :=
   match T with
+  | (List.nil, R) => translate R
   | (adjs, R) => let fix tr_adjs (ads : list Adjective) :=
                      match ads with
                      | List.cons a tl => if null tl then translate a else And (translate a) (tr_adjs tl)
@@ -103,10 +104,12 @@ in (translate st)
 Proof. unfold constant; simpl; auto. Qed.
 
 
+(* The [subst_bvar_inner] usage here causes problems later on, so I need to think
+very carefully about what to do here... *)
 Global Instance TranslatableJudgementType : Translatable JudgementType := {
   translate (J : JudgementType) := 
   match J with
-  | Esti tm Tp => subst_bvar_inner 0 tm (translate Tp)
+  | Esti tm Tp => subst_bvar_inner 0 tm (translate Tp) (* XXX this needs to be carefully thought through... *)
   | Subtype T1 T2 => match (translate T1), (translate T2) with
                      | A1, A2 => Forall (Implies A1 A2)
                      end
@@ -147,8 +150,8 @@ _         __   _                         _                 __       _ _
 Fixpoint translate_antecedent (lc : LocalContext) (j : JudgementType) : Formula :=
 match lc with
 | List.nil => translate j
-| List.cons T List.nil => Forall (Implies (translate T) (translate j))
-| List.cons T tl => Forall (Implies (translate T) (translate_antecedent tl j))
+| List.cons T tl => if null tl then Forall (Implies (translate T) (translate j))
+                    else Forall (Implies (translate T) (translate_antecedent tl j))
 end.
 
 Compute (translate_antecedent [(mk_mode "T1" []%vector) ; (mk_mode "T2" [(Var (BVar 0))]%vector)]%list
@@ -161,9 +164,19 @@ Or namelessly: Forall (Forall (|T1|(1) /\ |T2|(0,1) -> |T3|(f(1,0), 0,1))). *)
 Example translate_antecedent_ex1 : 
 (translate_antecedent [(mk_mode "T1" []%vector) ; (mk_mode "T2" [(Var (BVar 0))]%vector)]%list
 (Esti (Fun "f" [(Var (BVar 1));(Var (BVar 0))]) (mk_mode "T3" [(Var (BVar 0));(Var (BVar 1))]%vector)))
+(* Expected: *)
+= Forall (Implies (Atom (P 1 "Mode_T1" [Var (BVar )]))
+                  (Forall (Implies (Atom (P 2 "Mode_T2" [Var (BVar 1); Var (BVar 0)])))
+                                   (Atom (P 3 "Mode_T3" [Fun "f" [Var (BVar 1); Var (BVar 0)]; Var (BVar 0); Var (BVar 1)])))).
+(* Actual:
+= Forall (Implies (Atom (P 1 "Mode_T1" [Var (BVar )]))
+                  (Forall (Implies (Atom (P 2 "Mode_T2" [Var (BVar 0); Var (BVar 1)])))
+                                   (Atom (P 3 "Mode_T3" [Fun "f" [Var (BVar 1); Var (BVar 0)]; Var (BVar 1); Var (BVar 2)])))). *)
+
+(* Or possibly...
 = Forall (Forall (Implies (And (Atom (P 1 "Mode_T1" [Var (BVar 1)]))
                                (Atom (P 2 "Mode_T2" [Var (BVar 1); Var (BVar 0)])))
-                          (Atom (P 3 "Mode_T3" [Fun "f" [Var (BVar 1); Var (BVar 0)]; Var (BVar 0); Var (BVar 1)])))).
+                          (Atom (P 3 "Mode_T3" [Fun "f" [Var (BVar 1); Var (BVar 0)]; Var (BVar 0); Var (BVar 1)])))). *)
 Admitted.
 
 
