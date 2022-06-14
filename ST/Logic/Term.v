@@ -419,6 +419,61 @@ Proof.
   trivial.
 Qed.
 
+Require Import Coq.Logic.Eqdep_dec.
+
+Lemma subst_id : forall (n : nat) (t : Term),
+  subst (BVar n) (Var (BVar n)) t = t.
+Proof.
+  intros.
+  induction t.
+  - destruct v. simpl; auto. assert ({n = n0} + {n <> n0}). decide equality. destruct H.
+    + rewrite e. simpl; auto. rewrite Nat.eqb_refl. reflexivity.
+    + apply Nat.eqb_neq in n1. simpl; auto. rewrite n1. reflexivity.
+  - simpl; auto.
+  - rename t into args.
+    assert (map (subst (BVar n) (Var (BVar n))) args = args). {
+      induction args.
+      + simpl; auto.
+      + assert (map (subst (BVar n) (Var (BVar n))) args = args). {
+          apply IHargs. inversion H. apply inj_pair2_eq_dec in H2.
+          rewrite H2 in H4. assumption. decide equality.
+        }
+        assert(map (subst (BVar n) (Var (BVar n))) (h :: args)
+               = (subst (BVar n) (Var (BVar n)) h)::(map (subst (BVar n) (Var (BVar n))) args)). {
+          simpl; auto.
+        }
+        rewrite H1. rewrite H0.
+        rewrite (Forall_forall Term (fun t : Term =>
+       subst (BVar n) (Var (BVar n)) t = t)
+      ) in H.
+        assert (In h (h :: args)). { apply In_cons_hd.  }
+        apply H in H2. rewrite H2. reflexivity.
+    }
+    assert (subst (BVar n) (Var (BVar n)) (Fun n1 args)
+            = Fun n1 (Vector.map (subst (BVar n) (Var (BVar n))) args)). {
+      simpl; auto.
+    }
+    rewrite H1; rewrite H0. reflexivity.
+Qed.
+
+Corollary subst_id_vec : forall (n n0 : nat) (args : Vector.t Term n0),
+  map (subst (BVar n) (Var (BVar n))) args = args.
+Proof.
+  intros.
+  induction args. simpl; auto.
+  assert (map (subst (BVar n) (Var (BVar n)))
+  (h :: args) = (subst (BVar n) (Var (BVar n)) h)::(map
+           (subst (BVar n) (Var (BVar n)))
+           args)). {
+    simpl; auto.
+  }
+  rewrite H.
+  assert (subst (BVar n) (Var (BVar n)) h = h). {
+    apply subst_id.
+  }
+  rewrite H0; rewrite IHargs; reflexivity.
+Qed.
+
 Fixpoint term_map_var (f : V -> V) (t : Term) : Term :=
 match t with
 | Var x => Var (f x)
@@ -805,17 +860,42 @@ Qed.
 
 (** The alternate approach is that fresh existential variables will be [0],
 and when we introduce one, we [shift_evars] in the related formulas. *)
-Class ShiftEvars A := {
-  shift_evars : A -> A
+Class LiftEvars A := {
+  lift_evars : nat -> A -> A
 }.
 
-Fixpoint shift_evars_term (t : Term) : Term :=
+Definition shift_evars {A : Type} `{LiftEvars A} (a : A) : A := lift_evars 1 a.
+
+Fixpoint lift_evars_term (k : nat) (t : Term) : Term :=
 match t with
 | Var _ => t
-| EConst n => EConst (S n)
-| Fun f args => Fun f (Vector.map shift_evars_term args)
+| EConst n => EConst (n + k)
+| Fun f args => Fun f (Vector.map (lift_evars_term k) args)
 end.
 
-Global Instance ShiftEvarsTerm : ShiftEvars Term := {
-shift_evars := shift_evars_term
+Global Instance ShiftEvarsTerm : LiftEvars Term := {
+lift_evars := lift_evars_term
+}.
+
+(** *** Check if a [Term] appears as a subterm *)
+Class Contains A := {
+  contains : Term -> A -> Prop
+}.
+
+Definition contains_var {A : Type} `{Contains A} (x : V) (a : A) : Prop := 
+  contains (Var x) a.
+
+Inductive contains_subterm : Term -> Term -> Prop :=
+| contains_subterm_refl : forall (t : Term),
+  contains_subterm t t
+| contains_subterm_fun : forall (sub : Term) {n : nat} (nm : name) (args : Vector.t Term n),
+  Vector.In sub args ->
+  contains_subterm sub (Fun nm args)
+| contains_subterm_trans : forall (t1 t2 t3 : Term),
+  contains_subterm t1 t2 ->
+  contains_subterm t2 t3 ->
+  contains_subterm t1 t3.
+
+Global Instance ContainsTerm : Contains Term := {
+  contains := contains_subterm
 }.

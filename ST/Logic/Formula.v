@@ -146,6 +146,30 @@ Proof.
   trivial.
 Qed.
 
+Example subst_bvar_2 : quantifier_elim_subst 0 (Fun "t" [Var (BVar 0)]) (Forall (Exists (Atom (P 2 "P" [Var (BVar 0); Var (BVar 1)]))))
+= Not (Not (Exists (Atom (P 2 "P" [Var (BVar 0); Fun "t" [Var (BVar 0)]])))).
+Proof.
+  trivial.
+Qed.
+
+Example subst_bvar_3 : quantifier_elim_subst 0 (Fun "t" []) 
+(Forall (Forall (Forall (Exists (Atom (P 3 "P" [Var (BVar 0); Var (BVar 1); Var (BVar 3)]))))))
+= Not (Not (Forall (Forall (Exists (Atom (P 3 "P" [Var (BVar 0); Var (BVar 1); (Fun "t" []) ])))))).
+Proof.
+  simpl; auto.
+Qed.
+
+(* In [Fun "t" [(Var (BVar 1))]], the parameter [BVar 1] is interpreted as a 
+free variable. For this reason, it will be "kept above" the syntactic depth
+of the outermost binder in the resulting formula. There are 3 quantifiers
+in the result, therefore we expect it to be [BVar 4] in the outcome. *)
+Example subst_bvar_4 : quantifier_elim_subst 0 (Fun "t" [(Var (BVar 1))]) 
+(Forall (Forall (Forall (Exists (Atom (P 3 "P" [Var (BVar 0); Var (BVar 1); Var (BVar 3)]))))))
+= Not (Not (Forall (Forall (Exists (Atom (P 3 "P" [Var (BVar 0); Var (BVar 1); (Fun "t" [(Var (BVar 4))]) ])))))).
+Proof.
+  simpl; auto.
+Qed.
+
 Fixpoint lift_formula (c d : nat) (phi : Formula) : Formula :=
   match phi with
   | Falsum => phi
@@ -312,22 +336,22 @@ Proof.
   apply insert_merge_list_fold_sorted. apply sorted_nil.
 Qed.
 
-Fixpoint shift_evars_formula (phi : Formula) : Formula :=
+Fixpoint lift_evars_formula (k : nat) (phi : Formula) : Formula :=
 match phi with
 | Falsum => phi
-| Atom pred => Atom (shift_evars pred)
-| And fm1 fm2 => And (shift_evars_formula fm1) (shift_evars_formula fm2)
-| Or fm1 fm2 => Or (shift_evars_formula fm1) (shift_evars_formula fm2)
-| Implies fm1 fm2 => Implies (shift_evars_formula fm1) (shift_evars_formula fm2)
-| Exists fm => Exists (shift_evars_formula fm)
+| Atom pred => Atom (lift_evars k pred)
+| And fm1 fm2 => And (lift_evars_formula k fm1) (lift_evars_formula k fm2)
+| Or fm1 fm2 => Or (lift_evars_formula k fm1) (lift_evars_formula k fm2)
+| Implies fm1 fm2 => Implies (lift_evars_formula k fm1) (lift_evars_formula k fm2)
+| Exists fm => Exists (lift_evars_formula k fm)
 end.
 
-Global Instance ShiftEvarsFormula : ShiftEvars Formula := {
-  shift_evars := shift_evars_formula
+Global Instance LiftEvarsFormula : LiftEvars Formula := {
+  lift_evars := lift_evars_formula
 }.
 
-Global Instance ShiftEvarsListFormula : ShiftEvars (list Formula) := {
-  shift_evars Γ := List.map shift_evars Γ
+Global Instance LiftEvarsListFormula : LiftEvars (list Formula) := {
+  lift_evars k Γ := List.map (lift_evars k) Γ
 }.
 
 Definition fresh_evar_counter (Γ : list Formula) (p : Formula) : nat :=
@@ -347,3 +371,65 @@ Lemma fresh_evar_body : forall (Γ : list Formula) (p : Formula),
   fresh (fresh_evar Γ p) p.
 Admitted.
 *)
+(*
+Lemma capture_free_subst_id0 : forall (p : Formula),
+  capture_free_subst 0 (Var (BVar 0)) p = p.
+Proof.
+  intros. induction p.
+  - simpl; auto.
+  - unfold capture_free_subst; rewrite Predicate.subst_id; reflexivity.
+  - simpl; auto; rewrite IHp1; rewrite IHp2; reflexivity. 
+  - simpl; auto; rewrite IHp1; rewrite IHp2; reflexivity. 
+  - simpl; auto; rewrite IHp1; rewrite IHp2; reflexivity. 
+  - assert (capture_free_subst 0 (Var (BVar 0)) (Exists p)
+            = Exists (capture_free_subst (S 0) (lift (S 0) 1 (Var (BVar 0))) p)). {
+      simpl; auto.
+    admit.
+    }
+    rewrite H.
+    assert (lift 1 1 (Var (BVar 0)) = Var (BVar 0)). {
+      simpl; auto.
+    }
+    rewrite H0.
+    admit.
+Admitted.
+
+Lemma capture_free_subst_id : forall (n : nat) (p : Formula),
+  capture_free_subst n (Var (BVar n)) p = p.
+Proof.
+  intros. generalize dependent n. induction p.
+  - intros; simpl; auto.
+  - intros; unfold capture_free_subst; rewrite Predicate.subst_id; reflexivity.
+  - intros; simpl; auto; rewrite IHp1; rewrite IHp2; reflexivity. 
+  - intros; simpl; auto; rewrite IHp1; rewrite IHp2; reflexivity. 
+  - intros; simpl; auto; rewrite IHp1; rewrite IHp2; reflexivity. 
+  - intros.
+    assert (capture_free_subst n (Var (BVar n)) (Exists p)
+            = Exists (capture_free_subst (S n) (lift (S n) 1 (Var (BVar n))) p)). {
+      simpl; auto.
+    }
+    assert (lift (S n) 1 (Var (BVar n)) = Var (BVar n)). {
+      assert (lift (S n) 1 (Var (BVar n)) = Var (lift (S n) 1 (BVar n))). {
+        simpl; auto.
+      } rewrite H0.
+      assert (lift (S n) 1 (BVar n) = BVar n). {
+        apply case_lift_is_id. simpl; auto.
+      }
+      rewrite H1; reflexivity.
+    }
+    rewrite H; rewrite H0.
+Admitted.
+*)
+
+Fixpoint contains_formula (sub : Term) (fm : Formula) : Prop := match fm with
+  | Falsum => False
+  | Atom p => contains sub p
+  | And A B | Or A B | Implies A B => (contains_formula sub A) \/ (contains_formula sub B)
+  | Exists A => contains_formula sub A
+end.
+
+Global Instance ContainsFormula : Contains Formula := {
+  contains := contains_formula
+}.
+
+

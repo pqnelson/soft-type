@@ -79,6 +79,13 @@ Proof.
   trivial.
 Qed.
 
+Lemma subst_id : forall (n : nat) (p : Predicate),
+  subst (BVar n) (Var (BVar n)) p = p.
+Proof.
+  intros. destruct p; unfold subst; unfold substPred.
+  rewrite Term.subst_id_vec. reflexivity.
+Qed.
+
 Global Instance EqPred : Eq Predicate :=
 {
   eqb (P1 P2 : Predicate) :=
@@ -177,8 +184,16 @@ Proof. intros.
   apply sorted_nil.
 Qed.
 
-Global Instance ShiftEvarsPredicate : ShiftEvars Predicate := {
-shift_evars p := match p with
-| P n s args => P n s (Vector.map shift_evars args)
+Global Instance LiftEvarsPredicate : LiftEvars Predicate := {
+lift_evars k p := match p with
+| P n s args => P n s (Vector.map (lift_evars k) args)
 end
+}.
+
+(* Contains a subterm *)
+
+Global Instance ContainsPredicate : Contains Predicate := {
+  contains (sub : Term) (p : Predicate) := match p with
+  | P _ _ args => Vector.Exists (contains sub) args
+  end
 }.
