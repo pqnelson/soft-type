@@ -414,6 +414,32 @@ Proof.
   assumption.
 Qed.
 
+Theorem ND_Iff_intro {Γ p q} :
+  p::Γ ⊢ q -> q::Γ ⊢ p -> Γ ⊢ Iff p q.
+Proof.
+  intros.
+  apply ND_imp_i2 in H; apply ND_imp_i2 in H0.
+  apply ND_and_intro. assumption. assumption.
+Qed.
+
+Theorem ND_Iff_elim_l {Γ p q} :
+  Γ ⊢ p -> Γ ⊢ Iff p q -> Γ ⊢ q.
+Proof.
+  intros.
+  apply ND_proj_l in H0 as H1.
+  apply (ND_imp_e (p := p) (q := q)) in H1.
+  assumption. assumption.
+Qed.
+
+Theorem ND_Iff_elim_r {Γ p q} :
+  Γ ⊢ q -> Γ ⊢ Iff p q -> Γ ⊢ p.
+Proof.
+  intros;
+  apply ND_proj_r in H0 as H1;
+  apply (ND_imp_e (p := q) (q := p)) in H1.
+  assumption. assumption.
+Qed.
+
 Theorem ND_uncurry {Γ p q r} : 
   Γ ⊢ Implies p (Implies q r) -> Γ ⊢ Implies (And p q) r.
 Proof.
@@ -460,6 +486,28 @@ Proof.
   }
   apply (ND_imp_e (p := (Implies (And p q) r))) in H0.
   assumption. assumption.
+Qed.
+
+
+Theorem ND_and_context {Γ p q r} :
+  (And p q)::Γ ⊢ r <-> p::q::Γ ⊢ r.
+Proof.
+  split.
+- intros. apply ND_imp_i2 in H; apply ND_curry in H.
+  Assume (p :: q :: Γ ⊢ p).
+  assert (Γ ⊆ p :: q :: Γ). { apply subcontext_weaken; apply subcontext_weaken; prove_subcontext. }
+  apply (@weakening Γ (p :: q :: Γ)) in H. 2: assumption.
+  apply (@ND_imp_e (p :: q :: Γ) p (Implies q r)) in H. 2: apply ND_assume; prove_In.
+  apply (@ND_imp_e (p :: q :: Γ) q r) in H. 2: apply ND_assume; prove_In.
+  assumption.
+- intros. apply ND_imp_i2 in H; apply ND_imp_i2 in H. apply ND_uncurry in H.
+  assert (Γ ⊆ (And p q) :: Γ). { apply subcontext_weaken; prove_subcontext. }
+  apply (@weakening Γ ((And p q) :: Γ)) in H. 2: assumption.
+  Assume (And p q :: Γ ⊢ And p q).
+  assert (And p q :: Γ ⊢ Implies (And p q) (And q p)). { apply ND_and_commutative. }
+  apply (@ND_imp_e (And p q :: Γ) (And p q)) in H2. 2: assumption.
+  apply (@ND_imp_e (And p q :: Γ) (And q p)) in H. 2: assumption.
+  assumption.
 Qed.
 
 Theorem ND_double_negation2 {Γ p} : 
@@ -759,6 +807,25 @@ Qed.
 
 End ImportantTheorems.
 
+Theorem implies_equiv_or_not {Γ p q} :
+  Γ ⊢ Iff (Implies p q) (Or (Not p) q).
+Proof.
+  apply ND_Iff_intro.
+  - assert (Implies p q :: Γ ⊢ Or p (Not p)). { apply ND_excluded_middle. }
+    apply (ND_proof_by_cases (r := Or (Not p) q)) in H. assumption.
+    Assume (p :: Implies p q :: Γ ⊢ Implies p q).
+    Assume (p :: Implies p q :: Γ ⊢ p).
+    apply ND_or_intro_r.
+    apply (@ND_imp_e (p :: Implies p q :: Γ) p q). assumption. assumption.
+    apply ND_or_intro_l. apply ND_assume; prove_In.
+  - apply ND_imp_i2.
+    Assume (p :: Or (Not p) q :: Γ ⊢ Or (Not p) q).
+    apply (ND_proof_by_cases (p := Not p) (q := q) (r := q)). 
+    apply ND_assume; prove_In.
+    apply (ND_not_e (q := q) (p := p)). prove_In. prove_In.
+    apply ND_assume; prove_In.
+Qed.
+
 Section QuantifierTheorems.
 Theorem not_Forall {Γ p} :
   Γ ⊢ Implies (Not (Forall p)) (Exists (Not p)).
@@ -852,6 +919,205 @@ Proof.
   intros.
   unfold Forall; unfold capture_free_subst; simpl; auto.
 Qed.
+
+Lemma forall_implies_verum_step {Γ} :
+  forall (p : Formula),
+  Γ ⊢ Implies (Forall p) Verum <-> Γ ⊢ Forall (Implies p Verum).
+Proof.
+  split.
+  - intros.
+    set (t := fresh_evar Γ Falsum).
+    apply (@ND_forall_i Γ (Implies p Verum) t).
+    2: unfold t; reflexivity.
+    assert (Γ ⊢ capture_free_subst 0 t (Implies p Verum)
+            = Γ ⊢ Implies (capture_free_subst 0 t p) Verum). {
+      simpl; auto.
+    }
+    rewrite H0.
+    apply ND_imp_i2.
+    apply ND_True_intro.
+  - intros. apply ND_imp_i2; apply ND_True_intro.
+Qed.
+Section CommutingConnectivesAndQuantifiers.
+Lemma capturing_garbage_bvars {Γ} :
+  forall (p : Formula) (t : Term),
+  Γ ⊢ p -> capture_free_subst 0 t p = p.
+Admitted.
+
+Lemma wff_capture_free_vacuity {Γ} :
+  forall (p : Formula) (t : Term),
+  Γ ⊢ p -> (capture_free_subst 0 t p) = p.
+Admitted.
+
+Lemma wff_capture_free_vacuity_antecedent {Γ} :
+  forall (p q : Formula) (t : Term),
+  Γ ⊢ (Implies (Forall p) q) -> (capture_free_subst 0 t q) = q.
+Admitted.
+
+Theorem implies_forall_equiv_exists_implies {Γ} :
+  forall (p q : Formula),
+  Γ ⊢ Iff (Implies (Forall p) q) (Exists (Implies p q)).
+Proof.
+  intros.
+  apply ND_Iff_intro.
+  - Assume ( (Implies (Forall p) q :: Γ) ⊢ Implies (Forall p) q).
+    assert ((Implies (Forall p) q :: Γ) ⊢ Iff (Implies (Forall p) q) (Or (Not (Forall p)) q)). {
+      apply implies_equiv_or_not.
+    }
+    Check @ND_Iff_elim_l.
+    apply (@ND_Iff_elim_l (Implies (Forall p) q :: Γ) (Implies (Forall p) q) (Or (Not (Forall p)) q))
+      in H.
+    2: assumption.
+    
+set (t := fresh_evar (Implies (Forall p) q :: Γ) Falsum).
+    apply (@ND_exists_intro (Implies (Forall p) q :: Γ) (Implies p q) t).
+    Assume (Implies (Forall p) q :: Γ ⊢ Implies (Forall p) q).
+    apply (@wff_capture_free_vacuity_antecedent (Implies (Forall p) q :: Γ) p q t) in H.
+    simpl; auto. 
+    rewrite H.
+    apply ND_imp_i2.
+    Assume (capture_free_subst 0 t p :: Implies (Forall p) q :: Γ ⊢ Implies (Forall p) q).
+    Assume (capture_free_subst 0 t p :: Implies (Forall p) q :: Γ ⊢ capture_free_subst 0 t p).
+    
+    Check @ND_forall_i.
+    Assume ((capture_free_subst 0 t p) :: Implies (Forall p) q :: Γ ⊢ Implies (Forall p) q).
+    assert ((capture_free_subst 0 t p) :: Implies (Forall p) q :: Γ ⊢ Forall p). {
+      Check @ND_forall_i.
+    }
+    Assume ((capture_free_subst 0 t p) :: Implies (Forall p) q :: Γ ⊢ (capture_free_subst 0 t p)).
+    apply (ND_imp_e (p := Forall p)) in H. 2: assumption.
+    Check @ND_exists_intro.
+    Check @ND_forall_i.
+apply ND_exists_intro.
+Admitted.
+
+Lemma wff_capture_free_vacuity {Γ} :
+  forall (p : Formula) (t : Term)
+  Γ ⊢ p -> (capture_free_subst 0 t p) = p.
+
+(*
+Proof.
+  intros.
+  apply ND_Iff_intro.
+  - assert (Implies (Forall p) q :: Γ ⊢ Iff (Implies (Forall p) q) (Or (Not (Forall p)) q)). {
+      apply (implies_equiv_or_not (Γ := Implies (Forall p) q :: Γ) (p := Forall p) (q := q)).
+    }
+    apply ND_Iff_elim_l in H. 2: apply ND_assume; prove_In.
+    set (t := fresh_evar (Implies (Forall p) q :: Γ) Falsum).
+    apply (ND_exists_intro (Γ := Implies (Forall p) q :: Γ) (t := t)).
+    simpl; auto.
+    Check @ND_forall_i.
+*)
+
+Theorem and_forall_equiv_forall_and {Γ} :
+  forall (p q : Formula),
+  Γ ⊢ Iff (And (Forall p) (Forall q)) (Forall (And p q)).
+Proof.
+  intros. apply ND_Iff_intro.
+  - apply ND_and_context.
+    set (t := fresh_evar ((Forall p)::(Forall q) :: Γ) Falsum).
+    apply (ND_forall_i (Γ := ((Forall p)::(Forall q) :: Γ)) (t := t)).
+    2: { unfold t; reflexivity. }
+    simpl; auto.
+    apply ND_and_intro.
+    + apply ND_forall_elim; apply ND_assume; prove_In.
+    + apply ND_forall_elim; apply ND_assume; prove_In.
+  - Assume (Forall (And p q) :: Γ ⊢  Forall (And p q)).
+    set (t := fresh_evar (Forall (And p q) :: Γ) Falsum).
+    apply (ND_forall_elim (Γ := Forall (And p q) :: Γ) (t := t)) in H as H0.
+    simpl in H0.
+    apply ND_proj_l in H0 as H1.
+    apply ND_forall_i in H1.
+    apply ND_proj_r in H0 as H2.
+    apply ND_forall_i in H2.
+    apply ND_and_intro. assumption. assumption. 
+    unfold t; reflexivity. unfold t; reflexivity.
+Qed.
+
+Theorem ND_or_elim {Γ} :
+  forall (p q r : Formula),
+  p::Γ ⊢ r -> q::Γ ⊢r -> (Or p q)::Γ ⊢ r.
+Proof.
+  intros.
+  apply (ND_proof_by_cases (Γ := (Or p q)::Γ) (r := r) (p := p) (q := q)).
+  apply ND_assume; prove_In.
+  - assert (p :: Γ ⊆ p :: Or p q :: Γ). { apply subcontext_cons. split. prove_In.
+      apply subcontext_weaken; apply subcontext_weaken; apply subcontext_reflex.
+    }
+    apply (@weakening (p :: Γ) ( p :: Or p q :: Γ)) in H. assumption.
+    assumption.
+  - assert (q :: Γ ⊆ q :: Or p q :: Γ). { apply subcontext_cons. split. prove_In.
+      apply subcontext_weaken; apply subcontext_weaken; apply subcontext_reflex.
+    }
+    apply (@weakening (q :: Γ) ( q :: Or p q :: Γ)) in H0. assumption.
+    assumption.
+Qed.
+
+Theorem or_exists_iff_exists_or {Γ} :
+  forall (p q : Formula),
+  Γ ⊢ Iff (Or (Exists p) (Exists q)) (Exists (Or p q)).
+Proof.
+  intros; apply ND_Iff_intro.
+  - set (c := fresh_evar Γ (Exists (Or p q))).
+    apply ND_or_elim with (p := (Exists p)) (q := (Exists q)) (r := Exists (Or p q)).
+    + apply (@ND_exists_elim_small Γ p (Exists (Or p q)) c).
+      2: unfold c; reflexivity.
+      apply (@ND_exists_intro (capture_free_subst 0 c p :: Γ) (Or p q) c).
+      simpl; auto.
+      apply ND_or_intro_l; apply ND_assume; prove_In.
+    + apply (@ND_exists_elim_small Γ q (Exists (Or p q)) c).
+      2: unfold c; reflexivity.
+      apply (@ND_exists_intro (capture_free_subst 0 c q :: Γ) (Or p q) c).
+      simpl; auto.
+      apply ND_or_intro_r; apply ND_assume; prove_In.
+  - set (c := fresh_evar Γ (Or (Exists p) (Exists q))).
+    apply (ND_exists_elim_small (c := c) (q :=  Or (Exists p) (Exists q)) (p := Or p q)).
+    2: unfold c; reflexivity.
+    assert (capture_free_subst 0 c (Or p q) = Or (capture_free_subst 0 c p) (capture_free_subst 0 c q)). {
+      simpl; auto.
+    }
+    rewrite H.
+    apply (@ND_or_elim Γ (capture_free_subst 0 c p) (capture_free_subst 0 c q) (Or (Exists p) (Exists q))).
+    + apply ND_or_intro_l.
+      apply (@ND_exists_intro (capture_free_subst 0 c p :: Γ) p c).
+      apply ND_assume; prove_In.
+    + apply ND_or_intro_r.
+      apply (@ND_exists_intro (capture_free_subst 0 c q :: Γ) q c).
+      apply ND_assume; prove_In.
+Qed.
+
+Theorem exists_and_implies_and_exists {Γ} :
+  forall (p q : Formula),
+  Γ ⊢ Implies (Exists (And p q)) (And (Exists p) (Exists q)).
+Proof.
+  intros. apply ND_imp_i2.
+  Check @ND_exists_elim_small.
+  set (c := fresh_evar Γ (And (Exists p) (Exists q))).
+  apply (@ND_exists_elim_small Γ (And p q) (And (Exists p) (Exists q)) c).
+  2: unfold c; reflexivity.
+  simpl; auto. apply ND_and_context.
+  apply ND_and_intro.
+  - apply (@ND_exists_intro (capture_free_subst 0 c p :: capture_free_subst 0 c q :: Γ) p c).
+    apply ND_assume; prove_In.
+  - apply (@ND_exists_intro (capture_free_subst 0 c p :: capture_free_subst 0 c q :: Γ) q c).
+    apply ND_assume; prove_In.
+Qed.
+
+Theorem or_forall_implies_forall_or {Γ} :
+  forall (p q : Formula),
+  Γ ⊢ Implies (Or (Forall p) (Forall q)) (Forall (Or p q)).
+Proof.
+  intros. apply ND_imp_i2.
+  set (t := fresh_evar (Or (Forall p) (Forall q) :: Γ) Falsum).
+  apply (@ND_forall_i (Or (Forall p) (Forall q) :: Γ) (Or p q) t).
+  2: unfold t; reflexivity.
+  simpl; auto.
+  apply ND_or_elim.
+  - apply ND_or_intro_l.
+    apply ND_forall_elim. apply ND_assume; prove_In.
+  - apply ND_or_intro_r; apply ND_forall_elim; apply ND_assume; prove_In.
+Qed.
+End CommutingConnectivesAndQuantifiers.
 End QuantifierTheorems.
 
 Theorem Verum_implies_Verum :
@@ -860,54 +1126,6 @@ Proof.
   apply ND_imp_i2; apply ND_True_intro.
 Qed.
 
-
-
-Theorem ND_and_context {Γ p q r} :
-  (And p q)::Γ ⊢ r <-> p::q::Γ ⊢ r.
-Proof.
-  split.
-- intros. apply ND_imp_i2 in H; apply ND_curry in H.
-  Assume (p :: q :: Γ ⊢ p).
-  assert (Γ ⊆ p :: q :: Γ). { apply subcontext_weaken; apply subcontext_weaken; prove_subcontext. }
-  apply (@weakening Γ (p :: q :: Γ)) in H. 2: assumption.
-  apply (@ND_imp_e (p :: q :: Γ) p (Implies q r)) in H. 2: apply ND_assume; prove_In.
-  apply (@ND_imp_e (p :: q :: Γ) q r) in H. 2: apply ND_assume; prove_In.
-  assumption.
-- intros. apply ND_imp_i2 in H; apply ND_imp_i2 in H. apply ND_uncurry in H.
-  assert (Γ ⊆ (And p q) :: Γ). { apply subcontext_weaken; prove_subcontext. }
-  apply (@weakening Γ ((And p q) :: Γ)) in H. 2: assumption.
-  Assume (And p q :: Γ ⊢ And p q).
-  assert (And p q :: Γ ⊢ Implies (And p q) (And q p)). { apply ND_and_commutative. }
-  apply (@ND_imp_e (And p q :: Γ) (And p q)) in H2. 2: assumption.
-  apply (@ND_imp_e (And p q :: Γ) (And q p)) in H. 2: assumption.
-  assumption.
-Qed.
-
-Theorem ND_Iff_intro {Γ p q} :
-  p::Γ ⊢ q -> q::Γ ⊢ p -> Γ ⊢ Iff p q.
-Proof.
-  intros.
-  apply ND_imp_i2 in H; apply ND_imp_i2 in H0.
-  apply ND_and_intro. assumption. assumption.
-Qed.
-
-Theorem ND_Iff_elim_l {Γ p q} :
-  Γ ⊢ p -> Γ ⊢ Iff p q -> Γ ⊢ q.
-Proof.
-  intros.
-  apply ND_proj_l in H0 as H1.
-  apply (ND_imp_e (p := p) (q := q)) in H1.
-  assumption. assumption.
-Qed.
-
-Theorem ND_Iff_elim_r {Γ p q} :
-  Γ ⊢ q -> Γ ⊢ Iff p q -> Γ ⊢ p.
-Proof.
-  intros;
-  apply ND_proj_r in H0 as H1;
-  apply (ND_imp_e (p := q) (q := p)) in H1.
-  assumption. assumption.
-Qed.
 
 Theorem consistency : not (proves Falsum).
 Proof.
