@@ -201,9 +201,18 @@ Proof.
     apply Tauto.if_same.
 Qed.
 
-Example shift_is_not_id : shift (BVar 0) = (BVar 1).
+Theorem lift_comp : forall (c d1 d2 : nat) (x : V),
+  lift c d1 (lift c d2 x) = lift c (d1 + d2) x.
 Proof.
-  trivial.
+  intros.
+  destruct x as[|n].
+  - simpl; auto. (* le_gt_dec n m: {n <= m} + {n > m} *)
+  - assert({c <= n} + {c > n}). apply le_gt_dec. destruct H.
+  + rewrite case_lift_is_not_id. rewrite case_lift_is_not_id. rewrite case_lift_is_not_id.
+    assert (n + d2 + d1 = n + (d1 + d2)). { lia. } rewrite H; reflexivity.
+    assumption. lia. assumption.
+  + rewrite case_lift_is_id. rewrite case_lift_is_id. rewrite case_lift_is_id. reflexivity.
+    assumption. assumption. assumption.
 Qed.
 
 Example shift_really_shifts : forall (n : nat), shift (BVar n) = BVar (n + 1).

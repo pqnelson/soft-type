@@ -146,6 +146,14 @@ Proof.
   rewrite H2; reflexivity.
 Qed.
 
+Theorem lift_comp : forall (c d1 d2 : nat) (p : Predicate),
+  lift c d1 (lift c d2 p) = lift c (d1 + d2) p.
+Proof.
+  intros. destruct p as [n nm args].
+  unfold lift; unfold LiftPred.
+  rewrite vect_lift_comp. reflexivity.
+Qed.
+
 Global Instance FreshPredicate : Fresh Predicate := {
   fresh (c : Term) (p : Predicate) :=
   match p with

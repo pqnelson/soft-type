@@ -190,6 +190,44 @@ We would encode $\forall x\exists y P(x,y)$ as
 *)
 
 
+Theorem lift_comp : forall (c d1 d2 : nat) (A : Formula),
+  lift c d1 (lift c d2 A) = lift c (d1 + d2) A.
+Proof.
+  intros. generalize dependent c.
+  induction A.
+  - intros. simpl; auto.
+  - intros. assert(lift c d1 (lift c d2 (Atom p)) = Atom (lift c d1 (lift c d2 p))). {
+      simpl; auto.
+    } rewrite H.
+    assert (lift c (d1 + d2) (Atom p) = Atom (lift c (d1 + d2) p)). {
+      simpl; auto.
+    } rewrite H0.
+    assert (lift c d1 (lift c d2 p) = lift c (d1 + d2) p). {
+      apply Predicate.lift_comp.
+    } rewrite H1. reflexivity.
+  - intros. assert (lift c d1 (lift c d2 (And A1 A2)) = And (lift c d1 (lift c d2 A1)) (lift c d1 (lift c d2 A2))). {
+      simpl; auto.
+    } rewrite H; rewrite IHA1; rewrite IHA2.
+    assert (lift c (d1 + d2) (And A1 A2) = And (lift c (d1 + d2) A1) (lift c (d1 + d2) A2)). {
+      simpl; auto.
+    } rewrite H0. reflexivity.
+  - intros. assert (lift c d1 (lift c d2 (Or A1 A2)) = Or (lift c d1 (lift c d2 A1)) (lift c d1 (lift c d2 A2))). {
+      simpl; auto.
+    } rewrite H; rewrite IHA1; rewrite IHA2.
+    assert (lift c (d1 + d2) (Or A1 A2) = Or (lift c (d1 + d2) A1) (lift c (d1 + d2) A2)). {
+      simpl; auto.
+    } rewrite H0. reflexivity.
+  - intros. assert (lift c d1 (lift c d2 (Implies A1 A2)) = Implies (lift c d1 (lift c d2 A1)) (lift c d1 (lift c d2 A2))). {
+      simpl; auto.
+    } rewrite H; rewrite IHA1; rewrite IHA2.
+    assert (lift c (d1 + d2) (Implies A1 A2) = Implies (lift c (d1 + d2) A1) (lift c (d1 + d2) A2)). {
+      simpl; auto.
+    } rewrite H0. reflexivity.
+  - intros. assert (lift c d1 (lift c d2 (Exists A)) = Exists (lift (S c) d1 (lift (S c) d2 A))). { simpl; auto. }
+    assert (lift c (d1 + d2) (Exists A) = Exists (lift (S c) (d1 + d2) A)). { simpl; auto. }
+    rewrite H; rewrite H0. rewrite (IHA (S c)). reflexivity.
+Qed.
+
 (**
 We now have a helper function to quantify over a given variable. They handle
 lifting and replacement, if the variable appears at all in the [Formula]. If

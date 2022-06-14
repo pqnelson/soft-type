@@ -650,6 +650,73 @@ Corollary bigger_lift_is_id_vector : forall (i k1 k2 n : nat) (args : Vector.t T
   Vector.map (lift k2 i) args = args.
 Admitted.
 
+
+Theorem lift_comp : forall (c d1 d2 : nat) (t : Term),
+  lift c d1 (lift c d2 t) = lift c (d1 + d2) t.
+Proof.
+  intros.
+  induction t.
+  - unfold lift; unfold liftTerm; unfold term_map_var. rewrite V.lift_comp. reflexivity.
+  - unfold lift; unfold liftTerm; unfold term_map_var. reflexivity.
+  - unfold lift; unfold liftTerm.
+    rewrite (Vector.Forall_forall Term (fun t : Term => lift c d1 (lift c d2 t) = lift c (d1 + d2) t) n t) in H.
+    assert (term_map_var (lift c d2) (Fun n0 t) = Fun n0 (Vector.map (lift c d2) t)). {
+      unfold term_map_var; simpl; auto.
+    } rewrite H0. clear H0.
+    assert (term_map_var (lift c d1) (Fun n0 (map (lift c d2) t)) = Fun n0 (map (lift c d1) (map (lift c d2) t))). {
+      simpl; auto.
+    }
+    assert (term_map_var (lift c (d1 + d2)) (Fun n0 t) = Fun n0 (map (lift c (d1 + d2)) t)). {
+      simpl; auto.
+    } rewrite H0; rewrite H1. clear H0 H1.
+    assert (map (lift c d1) (map (lift c d2) t) = map (lift c (d1 + d2)) t). {
+      induction t as [| h tl].
+      - simpl; auto.
+      - assert (map (lift c d1) (map (lift c d2) (h :: t)) = (lift c d1 (lift c d2 h))::map (lift c d1) (map (lift c d2) t)). {
+          simpl; auto.
+        } 
+        assert (forall a : Term, VectorDef.In a t -> lift c d1 (lift c d2 a) = lift c (d1 + d2) a). {
+          intros. apply In_cons_tl with (x := h) in H1. apply H in H1. assumption.
+        }
+        apply IHt in H1. rewrite H0; rewrite H1.
+        assert (lift c d1 (lift c d2 h) = lift c (d1 + d2) h). {
+          apply H. apply In_cons_hd.
+        }
+        rewrite H2.
+        simpl; auto.
+    }
+    rewrite H0; reflexivity.
+Qed.
+
+Theorem vect_lift_comp : forall (c d1 d2 : nat) {n : nat} (args : Vector.t Term n),
+  Vector.map (lift c d1) (Vector.map (lift c d2) args) 
+  = Vector.map (lift c (d1 + d2)) args.
+Proof.
+  induction args as [| h t].
+  - simpl; auto.
+  - assert (map (lift c d1) (map (lift c d2) (h :: args)) = (lift c d1 (lift c d2 h))::map (lift c d1) (map (lift c d2) args)). {
+      simpl; auto.
+    } rewrite H. rewrite IHargs.
+    assert (lift c d1 (lift c d2 h) = lift c (d1 + d2) h). {
+      apply lift_comp.
+    }
+    rewrite H0.
+    simpl; auto.
+Qed.
+  
+(*
+  - 
+  destruct x as[|n].
+  - simpl; auto. (* le_gt_dec n m: {n <= m} + {n > m} *)
+  - assert({c <= n} + {c > n}). apply le_gt_dec. destruct H.
+  + rewrite case_lift_is_not_id. rewrite case_lift_is_not_id. rewrite case_lift_is_not_id.
+    assert (n + d2 + d1 = n + (d1 + d2)). { lia. } rewrite H; reflexivity.
+    assumption. lia. assumption.
+  + rewrite case_lift_is_id. rewrite case_lift_is_id. rewrite case_lift_is_id. reflexivity.
+    assumption. assumption. assumption.
+Qed.
+*)
+
 (*
   - reflexivity.
   - bdestruct (Nat.ltb n k1).
