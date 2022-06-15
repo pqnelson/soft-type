@@ -18,7 +18,8 @@ Open Scope string_scope.
 
 A [Term] is either a variable, or an n-ary function. Constants are just nullary 
 functions. We do carve out [EConst] for existential constants, to make
-logic easier later on.
+logic easier later on. The intuition is that an [EConst] is an arbitrary
+Henkin constant.
 *)
 
 Unset Elimination Schemes.

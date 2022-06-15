@@ -739,4 +739,16 @@ gc :: Γ ⊢ Forall (Every m (Implies A body))
 *)
 Admitted.
 
+Theorem variadic_universal_hypothetical_syllogism {Γ m p q r} :
+  Γ ⊢ Implies (Every m (Implies p q))
+        (Implies (Every m (Implies q r)) (Every m (Implies p r))).
+Proof.
+Admitted.
+
+Theorem variadic_premised_universal_hypothetical_syllogism {Γ m A p q r} :
+  Γ ⊢ Implies (Every m (Implies A (Forall (Implies p q))))
+        (Implies (Every m (Implies A (Forall (Implies q r))))
+                 (Every m (Implies A (Forall (Implies p r))))).
+Proof.
+Admitted.
   

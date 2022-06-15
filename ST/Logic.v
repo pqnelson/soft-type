@@ -736,7 +736,7 @@ Proof.
   assumption. apply ND_assume; prove_In.
 Qed.
 
-Theorem forall_proj_r {Γ p q} :
+Theorem proj_r_forall {Γ p q} :
   Γ ⊢ Implies (Forall (And p q)) (Forall q).
 Proof.
   set (c := fresh_evar (Forall (And p q) :: Γ) Falsum).
@@ -751,7 +751,7 @@ Proof.
   assumption.
 Qed.
 
-Theorem forall_proj_l {Γ p q} :
+Theorem proj_l_forall {Γ p q} :
   Γ ⊢ Implies (Forall (And p q)) (Forall p).
 Proof.
   set (c := fresh_evar (Forall (And p q) :: Γ) Falsum).
@@ -803,6 +803,47 @@ Proof.
   rewrite H6 in H2.
   apply (@ND_forall_i (Forall (Implies q r) :: Forall (Implies p q) :: Γ) (Implies p r) t) in H2.
   assumption. auto.
+Qed.
+
+Theorem forall_proj_l {Γ p q} :
+  Γ ⊢ Forall (Implies (And p q) p).
+Proof.
+  intros.
+  set (t := fresh_evar Γ Falsum).
+  apply (ND_forall_i (t := t)).
+  simpl; auto. set (p' := (capture_free_subst 0 t p)).
+  set (q' := (capture_free_subst 0 t q)).
+  apply ND_imp_i2; apply ND_and_context; apply ND_assume; prove_In.
+  unfold t; reflexivity.
+Qed.
+
+Theorem forall_proj_r {Γ p q} :
+  Γ ⊢ Forall (Implies (And p q) q).
+Proof.
+  intros.
+  set (t := fresh_evar Γ Falsum).
+  apply (ND_forall_i (t := t)).
+  simpl; auto. set (p' := (capture_free_subst 0 t p)).
+  set (q' := (capture_free_subst 0 t q)).
+  apply ND_imp_i2; apply ND_and_context; apply ND_assume; prove_In.
+  unfold t; reflexivity.
+Qed.
+
+Theorem conj_l {Γ p q r} :
+  Γ ⊢ Forall (Implies q r) -> Γ ⊢ Forall (Implies (And p q) (And p r)).
+Proof.
+  intros.
+  set (t := fresh_evar Γ Falsum).
+  apply (ND_forall_i (t := t)). 2: unfold t; reflexivity.
+  simpl; auto. apply ND_imp_i2; apply ND_and_context.
+  apply ND_and_intro. apply ND_assume; prove_In.
+  Assume (capture_free_subst 0 t p :: capture_free_subst 0 t q :: Γ ⊢ capture_free_subst 0 t q).
+  apply (ND_forall_elim (t := t)) in H as H1.
+  simpl in H1. 
+  apply (@weakening Γ (capture_free_subst 0 t p :: capture_free_subst 0 t q :: Γ)) in H1.
+  apply (ND_imp_e (p := capture_free_subst 0 t q)) in H1.
+  assumption. assumption. apply subcontext_weaken; apply subcontext_weaken;
+  apply subcontext_reflex.
 Qed.
 
 End ImportantTheorems.
@@ -1132,6 +1173,22 @@ Theorem Verum_implies_Verum :
   proves (Implies Verum Verum).
 Proof.
   apply ND_imp_i2; apply ND_True_intro.
+Qed.
+
+Corollary forall_Verum_implies_Verum :
+  proves (Forall (Implies Verum Verum)).
+Proof.
+  set (t := fresh_evar []%list Falsum).
+  apply (ND_forall_i (t := t)). 2: unfold t; reflexivity.
+  simpl; auto; fold Verum; apply Verum_implies_Verum.
+Qed.
+
+Corollary exists_Verum :
+  proves (Exists Verum).
+Proof. Check @ND_exists_intro.
+  set (t := fresh_evar []%list Verum).
+  apply (ND_exists_intro (t := t)).
+  simpl; auto; fold Verum; apply ND_True_intro.
 Qed.
 
 Lemma forall_and_subst {Γ} :

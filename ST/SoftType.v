@@ -69,10 +69,10 @@ Inductive well_typed : Judgement -> Prop :=
   well_typed (Γ ;; Δ |- Inhabited T) ->
   well_typed (Γ ;; (push T Δ) |- CorrectContext)
 (* TODO: substitution rule for a vector of declarations *)
-| wt_subst : forall (Γ : GlobalContext) (Δ Δ' : LocalContext) (t : Term) (T : SoftType) (J : JudgementType),
-  gc_contains Γ ((List.cons T Δ), J) ->
+| wt_subst : forall (Γ : GlobalContext) (Δ : LocalContext) (t : Term) (T : SoftType) (J : JudgementType),
+  well_typed (Γ ;; (List.cons T Δ) |- J) ->
   well_typed (Γ ;; Δ |- Esti t T) ->
-  well_typed (Γ ;; Δ |- (subst (BVar 0) t J))
+  well_typed (Γ ;; Δ |- (subst (BVar (length Δ)) t J))
 (* XXX Wiedijk combines this [wt_assume] rule with [wt_subst] in a single step, I decompose them into two. *)
 | wt_assume : forall (Γ : GlobalContext) (Δ : LocalContext) (J : JudgementType),
   gc_contains Γ (Δ, J) ->
@@ -99,10 +99,10 @@ Inductive well_typed : Judgement -> Prop :=
   well_typed (Γ ;; Δ |- Subtype T1 T2) ->
   well_typed (Γ ;; Δ |- Inhabited T1) ->
   well_typed (Γ ;; Δ |- Inhabited T2)
-| wt_cons_adj : forall (Γ : GlobalContext) (Δ : LocalContext) (T : SoftType) (A : Attribute),
+| wt_cons_pos : forall (Γ : GlobalContext) (Δ : LocalContext) (T : SoftType) (A : Attribute),
   well_typed (Γ ;; Δ |- HasAttribute A T) ->
   well_typed (Γ ;; Δ |- Subtype (prefix (Pos A) T) T)
-| wt_cons_non : forall (Γ : GlobalContext) (Δ : LocalContext) (T : SoftType) (A : Attribute),
+| wt_cons_neg : forall (Γ : GlobalContext) (Δ : LocalContext) (T : SoftType) (A : Attribute),
   well_typed (Γ ;; Δ |- HasAttribute A T) ->
   well_typed (Γ ;; Δ |- Subtype (prefix (Neg A) T) T)
 | wt_adj_subtype : forall (Γ : GlobalContext) (Δ : LocalContext) (T1 T2 : SoftType) (a : Adjective),
