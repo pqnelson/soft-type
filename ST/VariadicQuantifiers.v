@@ -713,6 +713,30 @@ Theorem provable_antecedent_result {Γ} :
   forall (m : nat) (gc A body : Formula),
   Γ ⊢ body -> (gc::Γ)%list ⊢ Every m (Implies A body).
 Proof.
+  intros.
+  apply (@weakening Γ (gc::Γ)%list) in H as H1.
+  2: { 
+    apply subcontext_weaken; apply subcontext_reflex.
+  }
+  induction m.
+  - unfold Every; apply ND_imp_i2.
+    apply (@weakening (gc::Γ)%list (A :: gc::Γ)%list).
+    assumption.
+    apply subcontext_weaken; apply subcontext_reflex.
+  - assert (Every (S m) (Implies A body) = Forall (Every m (Implies A body))). {
+      simpl; auto.
+    } rewrite H0; clear H0.
+(*
+1 goal
+Γ : list Formula
+m : nat
+gc, A, body : Formula
+H : Γ ⊢ body
+H1 : gc :: Γ ⊢ body
+IHm : gc :: Γ ⊢ Every m (Implies A body)
+______________________________________(1/1)
+gc :: Γ ⊢ Forall (Every m (Implies A body))
+*)
 Admitted.
 
   

@@ -488,49 +488,6 @@ Proof.
   apply provable_body_translations_provable.
   rewrite <- H. apply ND_True_intro.
 Qed.
-(*
-Proof.
-  intros.
-  destruct judgement. destruct p.
-  unfold translate; unfold TranslatableJudgement.
-  unfold proves; apply ND_imp_i2.
-  unfold Judgement_body in H. set (Γ := translate g).
-  generalize dependent Γ.
-  induction l.
-  - intros. unfold translate_antecedent. rewrite <- H.
-    apply ND_True_intro.
-  - intros. destruct l as [| b l'].
-  + unfold translate_antecedent. rewrite <- H.
-    set (t := fresh_evar [Γ] Falsum).
-    apply (@ND_forall_i [Γ] (Implies (translate a) Verum) t).
-    assert ([Γ] ⊢ capture_free_subst 0 t (Implies (translate a) Verum)
-            = [Γ] ⊢ Implies (capture_free_subst 0 t (translate a)) Verum). {
-      simpl; auto.
-    }
-    rewrite H0. apply ND_imp_i2; apply ND_True_intro.
-    unfold t; reflexivity.
-  + assert ([Γ] ⊢ translate_antecedent (a :: b :: l')%list j
-            = [Γ] ⊢ Forall (Implies (translate a) (translate_antecedent (b :: l')%list j))). {
-      unfold translate_antecedent; simpl; auto.
-    }
-    rewrite H0.
-    set (t := fresh_evar [Γ] Falsum).
-    apply (@ND_forall_i [Γ] (Implies (translate a) (translate_antecedent (b :: l')%list j)) t).
-    2: unfold t; reflexivity.
-    assert ([Γ] ⊢ capture_free_subst 0 t (Implies (translate a) (translate_antecedent (b :: l')%list j))
-          = [Γ] ⊢ Implies (capture_free_subst 0 t (translate a)) (capture_free_subst 0 t (translate_antecedent (b :: l')%list j))). {
-      simpl; auto.
-    }
-    rewrite H1.
-    apply ND_imp_i2.
-    apply ND_and_context. 
-    assert([And (capture_free_subst 0 t (translate a)) Γ] ⊢ translate_antecedent (b :: l')%list j). {
-      apply (@IHl (And (capture_free_subst 0 t (translate a)) Γ)).
-    }
-    forall Γ : Formula,
-      [Γ] ⊢ translate_antecedent (b :: l')%list j
-unfold translate_antecedent. rewrite <- H.
-*)
 
 (*
 Global Instance TranslatableJudgementType : Translatable JudgementType := {
@@ -626,6 +583,7 @@ Proof.
   intros.
   induction H.
   - apply correct_contexts_are_trivial; apply Verum_implies_Verum. (* Γ ;; Δ |- CorrectContext *)
-  - intros. simpl. (* Γ;; push (x, T) Δ |- CorrectContext *)
+  - intros. simpl. apply correct_contexts_are_trivial; apply Verum_implies_Verum. (* Γ;; push (x, T) Δ |- CorrectContext *)
+  - 
   (* ... and the rest! *)
 Qed.
