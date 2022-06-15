@@ -708,3 +708,11 @@ Theorem move_every_from_antecedent {Γ} :
   forall (m n : nat) (p q : Formula),
   Γ ⊢ Every m (Implies p (Every n q)) -> Γ ⊢ Every (m + n) (Implies (lift n 0 p) q).
 Admitted.
+
+Theorem provable_antecedent_result {Γ} :
+  forall (m : nat) (gc A body : Formula),
+  Γ ⊢ body -> (gc::Γ)%list ⊢ Every m (Implies A body).
+Proof.
+Admitted.
+
+  

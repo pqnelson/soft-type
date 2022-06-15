@@ -474,8 +474,11 @@ Proof.
   - set (Δ := (d::Δ')%list).
     assert (Δ <> []%list). { discriminate. }
     apply (@uncurried_translate_antecedent_structure Δ j) in H0. 
-    unfold translate_antecedent.
-Admitted.
+    unfold translate_antecedent. destruct H0 as [A].
+    rewrite H0.
+    apply (provable_antecedent_result (Γ := List.nil) (length Δ) (translate Γ) A) in H as H1.
+    assumption.
+Qed.
 
 Corollary vacuous_translations_provable :
   forall (judgement : Judgement),
