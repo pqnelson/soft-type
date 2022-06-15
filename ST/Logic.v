@@ -954,48 +954,46 @@ Lemma wff_capture_free_vacuity_antecedent {Γ} :
   Γ ⊢ (Implies (Forall p) q) -> (capture_free_subst 0 t q) = q.
 Admitted.
 
-Theorem implies_forall_equiv_exists_implies {Γ} :
+Theorem implies_or_not {Γ} :
   forall (p q : Formula),
-  Γ ⊢ Iff (Implies (Forall p) q) (Exists (Implies p q)).
+  Γ ⊢ Implies p q <-> Γ ⊢ Or (Not p) q.
 Proof.
-  intros.
-  apply ND_Iff_intro.
-  - Assume ( (Implies (Forall p) q :: Γ) ⊢ Implies (Forall p) q).
-    assert ((Implies (Forall p) q :: Γ) ⊢ Iff (Implies (Forall p) q) (Or (Not (Forall p)) q)). {
+  intros. split.
+  - intros. assert (Γ ⊢ Iff (Implies p q) (Or (Not p) q)). {
       apply implies_equiv_or_not.
     }
-    Check @ND_Iff_elim_l.
-    apply (@ND_Iff_elim_l (Implies (Forall p) q :: Γ) (Implies (Forall p) q) (Or (Not (Forall p)) q))
-      in H.
-    2: assumption.
-    
-set (t := fresh_evar (Implies (Forall p) q :: Γ) Falsum).
-    apply (@ND_exists_intro (Implies (Forall p) q :: Γ) (Implies p q) t).
-    Assume (Implies (Forall p) q :: Γ ⊢ Implies (Forall p) q).
-    apply (@wff_capture_free_vacuity_antecedent (Implies (Forall p) q :: Γ) p q t) in H.
-    simpl; auto. 
-    rewrite H.
-    apply ND_imp_i2.
-    Assume (capture_free_subst 0 t p :: Implies (Forall p) q :: Γ ⊢ Implies (Forall p) q).
-    Assume (capture_free_subst 0 t p :: Implies (Forall p) q :: Γ ⊢ capture_free_subst 0 t p).
-    
-    Check @ND_forall_i.
-    Assume ((capture_free_subst 0 t p) :: Implies (Forall p) q :: Γ ⊢ Implies (Forall p) q).
-    assert ((capture_free_subst 0 t p) :: Implies (Forall p) q :: Γ ⊢ Forall p). {
-      Check @ND_forall_i.
+    apply ND_Iff_elim_l in H0. assumption. assumption.
+  - intros. assert (Γ ⊢ Iff (Implies p q) (Or (Not p) q)). {
+      apply implies_equiv_or_not.
     }
-    Assume ((capture_free_subst 0 t p) :: Implies (Forall p) q :: Γ ⊢ (capture_free_subst 0 t p)).
-    apply (ND_imp_e (p := Forall p)) in H. 2: assumption.
-    Check @ND_exists_intro.
-    Check @ND_forall_i.
-apply ND_exists_intro.
-Admitted.
+    apply ND_Iff_elim_r in H0. assumption. assumption.
+Qed.
+
+
+Theorem ND_or_elim {Γ} :
+  forall (p q r : Formula),
+  p::Γ ⊢ r -> q::Γ ⊢r -> (Or p q)::Γ ⊢ r.
+Proof.
+  intros.
+  apply (ND_proof_by_cases (Γ := (Or p q)::Γ) (r := r) (p := p) (q := q)).
+  apply ND_assume; prove_In.
+  - assert (p :: Γ ⊆ p :: Or p q :: Γ). { apply subcontext_cons. split. prove_In.
+      apply subcontext_weaken; apply subcontext_weaken; apply subcontext_reflex.
+    }
+    apply (@weakening (p :: Γ) ( p :: Or p q :: Γ)) in H. assumption.
+    assumption.
+  - assert (q :: Γ ⊆ q :: Or p q :: Γ). { apply subcontext_cons. split. prove_In.
+      apply subcontext_weaken; apply subcontext_weaken; apply subcontext_reflex.
+    }
+    apply (@weakening (q :: Γ) ( q :: Or p q :: Γ)) in H0. assumption.
+    assumption.
+Qed.
+
+(*
 
 Lemma wff_capture_free_vacuity {Γ} :
   forall (p : Formula) (t : Term)
   Γ ⊢ p -> (capture_free_subst 0 t p) = p.
-
-(*
 Proof.
   intros.
   apply ND_Iff_intro.
@@ -1034,24 +1032,6 @@ Proof.
     unfold t; reflexivity. unfold t; reflexivity.
 Qed.
 
-Theorem ND_or_elim {Γ} :
-  forall (p q r : Formula),
-  p::Γ ⊢ r -> q::Γ ⊢r -> (Or p q)::Γ ⊢ r.
-Proof.
-  intros.
-  apply (ND_proof_by_cases (Γ := (Or p q)::Γ) (r := r) (p := p) (q := q)).
-  apply ND_assume; prove_In.
-  - assert (p :: Γ ⊆ p :: Or p q :: Γ). { apply subcontext_cons. split. prove_In.
-      apply subcontext_weaken; apply subcontext_weaken; apply subcontext_reflex.
-    }
-    apply (@weakening (p :: Γ) ( p :: Or p q :: Γ)) in H. assumption.
-    assumption.
-  - assert (q :: Γ ⊆ q :: Or p q :: Γ). { apply subcontext_cons. split. prove_In.
-      apply subcontext_weaken; apply subcontext_weaken; apply subcontext_reflex.
-    }
-    apply (@weakening (q :: Γ) ( q :: Or p q :: Γ)) in H0. assumption.
-    assumption.
-Qed.
 
 Theorem or_exists_iff_exists_or {Γ} :
   forall (p q : Formula),
@@ -1117,6 +1097,34 @@ Proof.
     apply ND_forall_elim. apply ND_assume; prove_In.
   - apply ND_or_intro_r; apply ND_forall_elim; apply ND_assume; prove_In.
 Qed.
+
+(** There is a complicated, counter-intuitive relationship between existential
+and universal quantifiers. Namely:
+
+$$ \exists x \forall y \varphi(x,y)\implies \forall y\exists x \varphi(x,y). $$
+
+Using de Bruijn indices, this is a bit trickier. I will not even try to prove
+this, but it's nice to know. *)
+
+(*
+Lemma push_forall_above_and {Γ} :
+  forall (p q : Formula),
+  Γ ⊢ Iff (And p (Forall q)) (Forall (And (shift p) q)).
+Proof.
+  intros.
+  apply ND_Iff_intro.
+  - apply ND_and_context.
+    set (t := fresh_evar (p :: Forall q :: Γ) Falsum).
+    apply (ND_forall_i (t := t)). 2: unfold t; reflexivity.
+*)
+
+Theorem implies_forall_equiv_exists_implies {Γ} :
+  forall (p q : Formula),
+  Γ ⊢ Iff (Implies (Forall p) q) (Exists (Implies p q)).
+Proof.
+Admitted.
+
+
 End CommutingConnectivesAndQuantifiers.
 End QuantifierTheorems.
 
@@ -1125,6 +1133,18 @@ Theorem Verum_implies_Verum :
 Proof.
   apply ND_imp_i2; apply ND_True_intro.
 Qed.
+
+Lemma forall_and_subst {Γ} :
+  forall (p : Formula) (t : Term), 
+  Γ ⊢ Iff (Forall p) (And (Forall p) (capture_free_subst 0 t p)).
+Proof.
+  intros. apply ND_Iff_intro.
+  - apply ND_and_intro. apply ND_assume; prove_In.
+    apply (ND_forall_elim (t := t)). apply ND_assume; prove_In.
+  - apply ND_and_context; apply ND_assume; prove_In.
+Qed.
+
+(* Similarly, we have [Γ ⊢ Iff (Exists p) (Or (Exists p) (capture_free_subst 0 t p))]. *)
 
 
 Theorem consistency : not (proves Falsum).

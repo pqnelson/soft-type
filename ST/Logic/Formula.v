@@ -128,6 +128,12 @@ match phi with
 | Exists fm => Exists (capture_free_subst (S n) (lift (S n) 1 t) fm)
 end.
 
+Lemma forall_subst : forall (n : nat) (t : Term) (A : Formula),
+  capture_free_subst n t (Forall A) = Forall (capture_free_subst (S n) (lift (S n) 1 t) A).
+Proof.
+  intros; simpl; auto.
+Qed.
+
 (** Specialization and choosing a witness for existential quantification
 amounts to the same "operations" of peeling off an outermost quantifier, then
 behaving as expected. *)
@@ -208,6 +214,12 @@ Global Instance LiftFormula : Lift Formula :=
   lift := lift_formula;
   unlift := unlift_formula
 }.
+  
+Lemma lift_forall : forall (c d : nat) (A : Formula),
+  lift c d (Forall A) = Forall (lift (S c) d A).
+Proof.
+  intros; simpl; auto.
+Qed.
 (**
 We would encode $\forall x\exists y P(x,y)$ as 
 [Forall (Exists (Atom (P 2 "P" [BVar 1; BVar 0])))], using de Bruijn indices.
