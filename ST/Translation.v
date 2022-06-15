@@ -462,10 +462,29 @@ translate (judge : Judgement) :=
   end
 }.
 
-Theorem vacuous_translations_provable :
+Theorem provable_body_translations_provable :
+  forall (judgement : Judgement),
+  proves (translate (Judgement_body judgement)) -> proves (translate judgement).
+Proof.
+  intros. destruct judgement as [[Γ Δ] j]. unfold Judgement_body in H.
+  unfold translate; unfold TranslatableJudgement. apply ND_imp_i2.
+  destruct Δ as [|d Δ'].
+  - unfold translate_antecedent; unfold uncurried_translate_antecedent.
+    apply (@weakening [] [translate Γ]). assumption. apply empty_subcontext.
+  - set (Δ := (d::Δ')%list).
+    assert (Δ <> []%list). { discriminate. }
+    apply (@uncurried_translate_antecedent_structure Δ j) in H0. 
+    unfold translate_antecedent.
+Admitted.
+
+Corollary vacuous_translations_provable :
   forall (judgement : Judgement),
   Verum = translate (Judgement_body judgement) -> proves (translate judgement).
-Admitted.
+Proof.
+  intros.
+  apply provable_body_translations_provable.
+  rewrite <- H. apply ND_True_intro.
+Qed.
 (*
 Proof.
   intros.
