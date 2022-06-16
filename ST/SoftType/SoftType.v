@@ -91,8 +91,8 @@ Definition mk_mode {n} (M : name) (args : Vector.t Term n) : SoftType :=
 
 Definition prefix (a : Adjective) (T : SoftType) : SoftType :=
   match T with
-  | (adjs, R) => if List.existsb (fun (adj : Adjective) => eqb a adj) adjs 
-                 then T else (List.cons a adjs, R)
+  | (adjs, R) => (* if List.existsb (fun (adj : Adjective) => eqb a adj) adjs 
+                 then T else *) (List.cons a adjs, R)
   end.
 
 Fixpoint prefix_all (adjs : list Adjective) (T : SoftType) : SoftType :=

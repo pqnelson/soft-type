@@ -739,6 +739,20 @@ gc :: Γ ⊢ Forall (Every m (Implies A body))
 *)
 Admitted.
 
+Theorem variadic_transport {Γ m p q r} :
+  Γ ⊢ Implies q r ->
+  Γ ⊢ Every m (Implies p q) ->
+  Γ ⊢ Every m (Implies p r).
+Proof.
+Admitted.
+
+Theorem variadic_modus_ponens {Γ m a p q} :
+  Γ ⊢ Every m (Implies a (Implies p q)) ->
+  Γ ⊢ Every m (Implies a p) ->
+  Γ ⊢ Every m (Implies a q).
+Proof.
+Admitted.
+
 Theorem variadic_universal_hypothetical_syllogism {Γ m p q r} :
   Γ ⊢ Implies (Every m (Implies p q))
         (Implies (Every m (Implies q r)) (Every m (Implies p r))).

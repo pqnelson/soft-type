@@ -79,34 +79,75 @@ match l with
 | _ => false
 end.
 
+Fixpoint right_and (a b : Formula) : Formula :=
+match a with
+| And a1 a2 => And a1 (right_and a2 b)
+| _ => And a b
+end.
+
+Require Import Coq.Bool.Bool.
+
+Lemma right_and_def : forall (a b : Formula),
+  false = is_and a -> right_and a b = And a b.
+Proof.
+  intros; simpl; auto. unfold right_and.
+  destruct a.
+  simpl; auto. simpl; auto.
+  contradict H; simpl; auto.
+  simpl; auto. simpl; auto. simpl; auto.
+Qed.
+
 (* Consider: shift everything by 1, and have [BVar 0] reserved for future
 use in translating judgements. *)
 (* Convention: 
-translate (ad::tl, R) = And (left_fold And (map translate tl) (translate ad))
-                            (translate R).
+translate (ad::tl, R) = And (translate ad)
+                            (translate (tl, R)).
 *)
 Global Instance TranslatableSoftType : Translatable SoftType := {
   translate (T : SoftType) :=
   match T with
   | (List.nil, R) => translate R
-  | (adjs, R) => let fix tr_adjs (ads : list Adjective) :=
-                     match ads with
-                     | List.cons a tl => if null tl then translate a else And (translate a) (tr_adjs tl)
-                     | List.nil => Verum
-                     end
-                     in And (tr_adjs adjs) (translate R)
+  | (adjs, R) => 
+    let fix tr_adjs (ads : list Adjective) :=
+    match ads with
+    | (a::tl)%list => And (translate a) (tr_adjs tl)
+    | List.nil => (translate R)
+    end
+    in tr_adjs adjs
   end
 }.
 
 Example translate_soft_type_1 :
-let st : SoftType := ([Neg (Attr 3 "SimplyConnected" [(Var (FVar "x")); (constant "c"); (Var (BVar 3))]%vector);
-  Pos (Attr 1 "Smooth" [(Var (FVar "y"))]%vector)]%list,
+let st : SoftType := ([Neg (Attr 3 "SimplyConnected" [(Var (FVar "x")); (constant "c"); 
+                       (Var (BVar 3))]%vector);
+                       Pos (Attr 1 "Smooth" [(Var (FVar "y"))]%vector)]%list,
 (Mode 3 "Manifold" [(Var (FVar "x")); (constant "c"); (Var (BVar 3))]))
 in (translate st)
-= And (And (translate (Neg (Attr 3 "SimplyConnected" [(Var (FVar "x")); (constant "c"); (Var (BVar 3))])))
-           (translate (Pos (Attr 1 "Smooth" [(Var (FVar "y"))]))))
-      (translate (Mode 3 "Manifold" [(Var (FVar "x")); (constant "c"); (Var (BVar 3))])).
+= And (translate (Neg (Attr 3 "SimplyConnected" [(Var (FVar "x")); (constant "c"); (Var (BVar 3))])))
+      (And (translate (Pos (Attr 1 "Smooth" [(Var (FVar "y"))])))
+           (translate (Mode 3 "Manifold" [(Var (FVar "x")); (constant "c"); (Var (BVar 3))]))).
 Proof. unfold constant; simpl; auto. Qed.
+
+Example translate_soft_type_2 :
+let st : SoftType := ([Pos (Attr 0 "Complex" []%vector);
+                       Pos (Attr 0 "Ricci-flat" []%vector);
+                       Neg (Attr 3 "SimplyConnected" [(Var (FVar "x")); (constant "c"); (Var (BVar 3))]%vector);
+                       Pos (Attr 1 "Smooth" [(Var (FVar "y"))]%vector)]%list,
+(Mode 3 "Manifold" [(Var (FVar "x")); (constant "c"); (Var (BVar 3))]))
+in (translate st)
+= And (translate (Pos (Attr 0 "Complex" []%vector)))
+      (And (translate (Pos (Attr 0 "Ricci-flat" []%vector)))
+           (And (translate (Neg (Attr 3 "SimplyConnected" [(Var (FVar "x")); (constant "c"); (Var (BVar 3))])))
+                (And (translate (Pos (Attr 1 "Smooth" [(Var (FVar "y"))])))
+                     (translate (Mode 3 "Manifold" [(Var (FVar "x")); (constant "c"); (Var (BVar 3))]))))).
+Proof. unfold constant; simpl; auto. Qed.
+
+Lemma translate_prefixed_soft_type : forall (a : Adjective) (adjs : list Adjective) (R : Radix) (T : SoftType),
+  T = (adjs,R) ->
+  translate (prefix a T) = translate ((a::adjs)%list, R).
+Proof.
+  intros. rewrite H; unfold prefix; reflexivity.
+Qed.
 
 (* The [capture_free_subst] usage here requires shifting, then unshifting,
 the bound variables. Otherwise, we end up with accidentally capturing the
@@ -131,9 +172,9 @@ Example translate_judgement_1 :
 translate (Esti (Fun "Sphere" [(constant "n")])
   ([Pos (Attr 0 "Smooth" []%vector); (Pos (Attr 1 "-dimensional" [(constant "n")]%vector))]%list, (Mode 1 "Manifold" [(constant "REAL")])))
 = let sphere : Term := (Fun "Sphere" [(constant "n")])
-  in And (And (Atom (P 1 "Attr_Smooth" [ sphere ]))
-              (Atom (P 2 "Attr_-dimensional" [sphere; Fun "n" []])))
-         (Atom (P 2 "Mode_Manifold" [sphere; Fun "REAL" []])).
+  in And (Atom (P 1 "Attr_Smooth" [ sphere ]))
+         (And (Atom (P 2 "Attr_-dimensional" [sphere; Fun "n" []]))
+              (Atom (P 2 "Mode_Manifold" [sphere; Fun "REAL" []]))).
 Proof. unfold constant; simpl; auto. Qed.
 
 (** Global definitions are a list of definitions, which are a [LocalContext]
@@ -271,23 +312,6 @@ of the translation process. For example, we will take advantage of the
 fact that a large class of well-typed derivations translate to a trivial
 derivation of the form [Every n (Implies p Verum)]. It is a nightmare
 to prove this using the curried version. *)
-Fixpoint right_and (a b : Formula) : Formula :=
-match a with
-| And a1 a2 => And a1 (right_and a2 b)
-| _ => And a b
-end.
-
-Require Import Coq.Bool.Bool.
-
-Lemma right_and_def : forall (a b : Formula),
-  false = is_and a -> right_and a b = And a b.
-Proof.
-  intros; simpl; auto. unfold right_and.
-  destruct a.
-  simpl; auto. simpl; auto.
-  contradict H; simpl; auto.
-  simpl; auto. simpl; auto. simpl; auto.
-Qed.
 
 Definition right_conjoin_many (h : Formula) (tl : list Formula) : Formula :=
   List.fold_left (fun current => fun next => (right_and (shift current) next))
@@ -541,10 +565,10 @@ Lemma empty_context_correctness :
 Proof. 
   intros; simpl; apply Verum_implies_Verum.
 Qed.
-
+(*
 Hint Unfold GlobalContext LocalContext : typeclass_instances.
 Hint Constructors well_typed deducible : core.
-
+*)
 (* XXX TODO: need to replace [t] with [iter_tlift (something) 0 t].
 
 Why? Because it should be [proves (Implies (translate Γ) (capture_free_subst t 0 (translate_antecedent Δ J))]. *)
@@ -717,7 +741,38 @@ Lemma subsumption_correctness : forall (t : Term) (T1 T2 : SoftType) (Γ : Globa
   proves (translate (Γ;; Δ |- Subtype T1 T2)) ->
   proves (translate (Γ;; Δ |- Esti t T2)).
 Proof.
+(*
   intros.
+  destruct Δ as [ | s Δ'].
+  - set (Δ := []%list). fold LocalContext in Δ.
+    assert ((translate (Γ;; Δ |- Esti t T1))
+             = (Implies (translate Γ)
+                        (unshift (capture_free_subst 0 (shift t) (translate T1))))). {
+      simpl; auto.
+    } fold Δ in H; fold Δ in H0. rewrite H1 in H. clear H1.
+    assert ((translate (Γ;; Δ |- Subtype T1 T2))
+             = (Implies (translate Γ)
+                        (Forall (Implies (translate T1) (translate T2))))). {
+      simpl; auto.
+    } rewrite H1 in H0. clear H1. 
+    apply (@weakening []%list [translate Γ]%list) in H. 2: apply empty_subcontext.
+    apply (@weakening []%list [translate Γ]%list) in H0. 2: apply empty_subcontext.
+    Assume ([translate Γ] ⊢ translate Γ).
+    apply (ND_imp_e (p := (translate Γ))) in H. 2: assumption.
+    apply (ND_imp_e (p := (translate Γ))) in H0. 2: assumption.
+    Set Printing All.
+  2: { set (Δ := (s::Δ')%list). fold LocalContext in Δ.
+   assert ((translate (Γ;; Δ |- Esti t T1))
+             = (Implies (translate Γ)
+                        (Every (length Δ)
+                               (Implies
+                               (right_conjoin_many (translate s) (map translate Δ'))
+                               ((capture_free_subst 0 (shift t) (translate T1))))))). {
+      simpl; auto.
+    } Set Printing All.
+    fold Δ in H; fold Δ in H0.
+    rewrite H1 in H. clear H1.
+    *)
 Admitted.
 
 (* This is just [forall_modus_ponens_tautology] *)
@@ -726,13 +781,79 @@ Lemma parent_inhabited_correctness : forall (T1 T2 : SoftType) (Γ : GlobalConte
   proves (translate (Γ;; Δ |- Inhabited T1)) ->
   proves (translate (Γ;; Δ |- Inhabited T2)).
 Proof. intros.
-Admitted.
+  destruct Δ as [ | s Δ'].
+  - set (Δ := List.nil). fold LocalContext in Δ. fold Δ in H0; fold Δ in H.
+    assert ((translate (Γ;; Δ |- Subtype T1 T2))
+            = (Implies (translate Γ) (Forall (Implies (translate T1) (translate T2))))). {
+      simpl; auto.
+    } rewrite H1 in H. clear H1.
+    assert ((translate (Γ;; Δ |- Inhabited T1))
+            = (Implies (translate Γ) (Exists (translate T1)))). {
+      simpl; auto.
+    } rewrite H1 in H0. clear H1.
+    apply (@weakening []%list [translate Γ]%list) in H. 2: apply empty_subcontext.
+    apply (@weakening []%list [translate Γ]%list) in H0. 2: apply empty_subcontext.
+    Assume ([translate Γ] ⊢ translate Γ).
+    apply (ND_imp_e (p := (translate Γ))) in H. 2: assumption.
+    apply (ND_imp_e (p := (translate Γ))) in H0. 2: assumption.
+    assert (translate (Γ;; Δ |- Inhabited T2) = Implies (translate Γ) (Exists (translate T2))). {
+      simpl; auto.
+    } rewrite H2. apply ND_imp_i2.
+    assert ([translate Γ] ⊢ Implies (Forall (Implies (translate T1) (translate T2))) (Implies (Exists (translate T1)) (Exists (translate T2)))). {
+      apply (@forall_modus_ponens_tautology [translate Γ] (translate T1) (translate T2)).
+    }
+    apply (ND_imp_e (p := (Forall (Implies (translate T1) (translate T2))))) in H3.
+    2: assumption.
+    apply (ND_imp_e (p := Exists (translate T1))) in H3.
+    2: assumption.
+    assumption.
+  - set (Δ := (s :: Δ')%list). fold LocalContext in Δ. fold Δ in H0; fold Δ in H.
+    assert (translate (Γ;; Δ |- Subtype T1 T2)
+            = Implies (translate Γ)
+                (Every (length Δ) 
+                  (Implies (right_conjoin_many (translate s) (map translate Δ'))
+                      (Forall (Implies (translate T1) (translate T2)))))). {
+      simpl; auto.
+    } rewrite H1 in H. clear H1.
+    assert (translate (Γ;; Δ |- Inhabited T1)
+            = Implies (translate Γ)
+                (Every (length Δ) 
+                  (Implies (right_conjoin_many (translate s) (map translate Δ'))
+                      (Exists (translate T1))))). {
+      simpl; auto.
+    } rewrite H1 in H0. clear H1.
+    Assume ([translate Γ] ⊢ translate Γ).
+    apply (@weakening []%list [translate Γ]%list) in H. 2: apply empty_subcontext.
+    apply (@weakening []%list [translate Γ]%list) in H0. 2: apply empty_subcontext.
+    apply (ND_imp_e (p := (translate Γ))) in H. 2: assumption.
+    apply (ND_imp_e (p := (translate Γ))) in H0. 2: assumption.
+    assert (translate (Γ;; Δ |- Inhabited T2) 
+            = Implies (translate Γ) (Every (length Δ) (Implies (right_conjoin_many (translate s) (map translate Δ')) (Exists (translate T2))))). {
+      simpl; auto.
+    } rewrite H2. apply ND_imp_i2.
+    assert ([translate Γ]
+       ⊢ Every (Datatypes.length Δ)
+           (Implies
+              (right_conjoin_many 
+                 (translate s) (map translate Δ'))
+              (Implies (Exists (translate T1))
+                 (Exists (translate T2))))). {
+      apply (variadic_transport (m := length Δ) (r := Implies (Exists (translate T1)) (Exists (translate T2))) (q := Forall (Implies (translate T1) (translate T2))) (Γ := [translate Γ]%list) (p := right_conjoin_many (translate s) (map translate Δ'))).
+      2: assumption. apply forall_modus_ponens_tautology.
+    }
+    apply (variadic_modus_ponens (p := Exists (translate T1)) (m := length Δ)) in H3 as H4.
+    assumption. assumption.
+Qed.
 
-Lemma translate_prefixed_soft_type : forall adj T,
+Lemma unfolded_translate_prefixed_soft_type : forall adj T,
   translate (prefix adj T) = And (translate adj) (translate T).
 Proof.
-Admitted.
-
+  intros. destruct T.
+  assert (prefix adj (l, r) = ((adj::l)%list, r)). { simpl; auto. }
+  fold LocalContext in H. rewrite H. clear H. induction l.
+  - simpl; auto.
+  - simpl; auto. 
+Qed.
 
 (* This is just [forall_proj_r] *)
 Lemma cons_pos_correctness : forall A T Γ Δ,
@@ -747,7 +868,7 @@ Proof.
     assert (translate (Subtype (prefix (Pos A) T) T) = Forall (Implies (translate (prefix (Pos A) T)) (translate T))). {
       simpl; auto.
     } rewrite H1.
-    rewrite translate_prefixed_soft_type. reflexivity.
+    rewrite unfolded_translate_prefixed_soft_type. reflexivity.
   }
   apply provable_body_translations_provable. rewrite H0; rewrite H1.
   apply forall_proj_r.
@@ -765,7 +886,7 @@ Proof. intros.
     assert (translate (Subtype (prefix (Neg A) T) T) = Forall (Implies (translate (prefix (Neg A) T)) (translate T))). {
       simpl; auto.
     } rewrite H1.
-    rewrite translate_prefixed_soft_type. reflexivity.
+    rewrite unfolded_translate_prefixed_soft_type. reflexivity.
   }
   apply provable_body_translations_provable. rewrite H0; rewrite H1.
   apply forall_proj_r.
@@ -785,41 +906,126 @@ Proof.
     assert (translate (Subtype (prefix a T1) T1) = Forall (Implies (translate (prefix a T1)) (translate T1))). {
       simpl; auto.
     } rewrite H2.
-    rewrite translate_prefixed_soft_type. reflexivity.
+    rewrite unfolded_translate_prefixed_soft_type. reflexivity.
   }
   apply provable_body_translations_provable. rewrite H1; rewrite H2.
   apply forall_proj_r.
 Qed.
 
-Lemma adj_subtype_adj_correctness : forall Γ Δ a T1 T2,
+Lemma nested_subtype_syllogism : forall Γ A p q,
+  Γ ⊢ Implies (Forall (Implies p q))
+              (Implies (Forall (Implies (And A q) q))
+                       (Forall (Implies (And A p) (And A q)))).
+Proof.
+  intros.
+  apply ND_imp_i2; apply ND_imp_i2.
+  Assume (Forall (Implies (And A q) q) :: Forall (Implies p q) :: Γ ⊢ Forall (Implies (And A q) q)).
+  Assume (Forall (Implies (And A q) q) :: Forall (Implies p q) :: Γ ⊢ Forall (Implies p q)).
+  set (t := fresh_evar (Forall (Implies (And A q) q) :: Forall (Implies p q) :: Γ) Falsum).
+  apply (ND_forall_i (t := t)). 2: unfold t; reflexivity.
+  simpl; auto.
+  apply ND_imp_i2.
+  apply ND_and_context.
+  apply ND_and_intro.
+  apply ND_assume; prove_In.
+  apply (ND_forall_elim (t := t)) in H.
+  apply (ND_forall_elim (t := t)) in H0. simpl in H0.
+  apply (ND_imp_e (p := capture_free_subst 0 t p)).
+  apply (@weakening (Forall (Implies (And A q) q) :: Forall (Implies p q) :: Γ) (capture_free_subst 0 t A
+:: capture_free_subst 0 t p :: Forall (Implies (And A q) q) :: Forall (Implies p q) :: Γ)) in H0.  
+   assumption.
+   apply subcontext_weaken; apply subcontext_weaken; apply subcontext_reflex.
+   apply ND_assume; prove_In.
+Qed.
+(*
+Hint Unfold GlobalContext LocalContext.
+Hint Unfold GlobalContext LocalContext : typeclass_instances.
+*)
+Corollary adj_subtype_adj_correctness : forall Γ Δ a T1 T2,
   proves (translate (Γ;; Δ |- Subtype T1 T2)) ->
   proves (translate (Γ;; Δ |- Subtype (prefix a T2) T2)) ->
   proves (translate (Γ;; Δ |- Subtype (prefix a T1) (prefix a T2))).
 Proof.
-  intros.
-  assert ([] ⊢ Forall (Implies (translate T1) (translate T2))). {
-    set (j := (Γ;; Δ |- Subtype T1 T2)).
-    assert (Judgement_body j = Subtype T1 T2). { simpl; auto. }
-    assert (translate (Subtype T1 T2)
-           = Forall (Implies (translate T1) (translate T2))). {
+  intros. 
+  assert (translate (prefix a T1) = And (translate a) (translate T1)) as Tr1. { apply unfolded_translate_prefixed_soft_type. }
+  assert (translate (prefix a T2) = And (translate a) (translate T2)) as Tr2. { apply unfolded_translate_prefixed_soft_type. }
+  destruct Δ as [|s Δ'].
+  - assert (translate (Γ;; List.nil |- Subtype T1 T2) 
+            = Implies (translate Γ) (Forall (Implies (translate T1) (translate T2)))). {
       simpl; auto.
+    } fold LocalContext in H1. rewrite H1 in H. clear H1.
+    assert (translate (Γ;; []%list |- Subtype (prefix a T2) T2)
+            = Implies (translate Γ) (Forall (Implies (translate (prefix a T2)) (translate T2)))). {
+      simpl; auto.
+    } fold LocalContext in H1. rewrite H1 in H0. clear H1.
+    assert (translate (Γ;; []%list |- Subtype (prefix a T1) (prefix a T2))
+            = Implies (translate Γ) (Forall (Implies (translate (prefix a T1)) (translate (prefix a T2))))). {
+      simpl; auto.
+    } fold LocalContext in H1. rewrite H1. clear H1.
+    rewrite Tr1; rewrite Tr2. rewrite Tr2 in H0.
+    Assume ([translate Γ] ⊢ translate Γ).
+    apply (@weakening []%list [translate Γ]) in H;
+    apply (@weakening []%list [translate Γ]) in H0.
+    2: apply empty_subcontext.
+    2: apply empty_subcontext.
+    2: apply empty_subcontext.
+    apply (ND_imp_e (p := translate Γ)) in H;
+    apply (ND_imp_e (p := translate Γ)) in H0.
+    2: assumption. 2: assumption. 2: assumption.
+    apply ND_imp_i2.
+    assert ([translate Γ]
+       ⊢ Implies (Forall (Implies (translate T1) (translate T2)))
+           (Implies (Forall (Implies (And (translate a) (translate T2)) (translate T2)))
+              (Forall (Implies (And (translate a) (translate T1)) (And (translate a) (translate T2)))))). {
+      apply (nested_subtype_syllogism [translate Γ] (translate a) (translate T1) (translate T2)).
     }
-    admit.
-  }
-  
-  set (j := (Γ ;; Δ |- Subtype (prefix a T1) (prefix a T2))).
-  assert (Judgement_body j = Subtype (prefix a T1) (prefix a T2)). { simpl; auto. }
-  assert (translate (Subtype (prefix a T1) (prefix a T2))
-         = Forall (Implies (And (translate a) (translate T1)) (And (translate a) (translate T2)))). {
-    assert (translate (Subtype (prefix a T1) (prefix a T2)) = Forall (Implies (translate (prefix a T1)) (translate (prefix a T2)))). {
+    apply (ND_imp_e (p := Forall (Implies (translate T1) (translate T2)))) in H2 as H3.
+    2: assumption.
+    apply (ND_imp_e (p := Forall (Implies (And (translate a) (translate T2)) (translate T2)))) in H3 as H4.
+    assumption.
+    assumption.
+  - set (Δ := (s :: Δ')%list). fold LocalContext in Δ. fold Δ in H; fold Δ in H0; fold Δ.
+    set (m := length Δ).
+    set (trΔ := (right_conjoin_many (translate s) (List.map translate Δ'))).
+    assert (translate (Γ;; Δ |- Subtype T1 T2) 
+            = Implies (translate Γ) 
+              (Every m (Implies trΔ (Forall (Implies (translate T1) (translate T2)))))). {
       simpl; auto.
-    } rewrite H3.
-    rewrite translate_prefixed_soft_type.
-    rewrite translate_prefixed_soft_type. reflexivity.
-  }
-  apply provable_body_translations_provable. rewrite H2; rewrite H3.
-  apply conj_l. assumption.
-Admitted.
+    } fold LocalContext in H1. rewrite H1 in H. clear H1.
+    assert (translate (Γ;; Δ |- Subtype (prefix a T2) T2)
+            = Implies (translate Γ) (Every m (Implies trΔ (Forall (Implies (translate (prefix a T2)) (translate T2)))))). {
+      simpl; auto.
+    } fold LocalContext in H1. rewrite H1 in H0. clear H1.
+    assert (translate (Γ;; Δ |- Subtype (prefix a T1) (prefix a T2))
+            = Implies (translate Γ) 
+              (Every m (Implies trΔ (Forall (Implies (translate (prefix a T1)) (translate (prefix a T2))))))). {
+      simpl; auto.
+    } fold LocalContext in H1. rewrite H1. clear H1.
+    rewrite Tr1; rewrite Tr2; rewrite Tr2 in H0.
+    Assume ([translate Γ] ⊢ translate Γ).
+    apply (@weakening []%list [translate Γ]) in H;
+    apply (@weakening []%list [translate Γ]) in H0.
+    2: apply empty_subcontext.
+    2: apply empty_subcontext.
+    2: apply empty_subcontext.
+    apply (ND_imp_e (p := translate Γ)) in H;
+    apply (ND_imp_e (p := translate Γ)) in H0.
+    2: assumption. 2: assumption. 2: assumption.
+    apply ND_imp_i2.
+    Check (variadic_modus_ponens (Γ := [translate Γ]) (a := trΔ) (m := m)
+     (p := Forall (Implies (translate T1) (translate T2)))
+        (q := (Implies (Forall (Implies (And (translate a) (translate T2)) (translate T2)))
+              (Forall (Implies (And (translate a) (translate T1)) (And (translate a) (translate T2))))))).
+    assert ([translate Γ] ⊢ Implies (Forall (Implies (translate T1) (translate T2)))
+           (Implies (Forall (Implies (And (translate a) (translate T2)) (translate T2)))
+                    (Forall (Implies (And (translate a) (translate T1)) (And (translate a) (translate T2)))))). {
+      apply (@nested_subtype_syllogism [translate Γ] (translate a) (translate T1) (translate T2)).
+    }
+    apply (variadic_transport (m := m) (p := trΔ) (q := (Forall (Implies (translate T1) (translate T2))))) in H2 as H3.
+    2: assumption.
+    apply (variadic_modus_ponens (p := (Forall (Implies (And (translate a) (translate T2)) (translate T2))))).
+    assumption. assumption.
+Qed.
 
 Lemma adj_diamond_correctness : forall T1 T2 a1 a2 Γ Δ,
   proves (translate (Γ;; Δ |- Subtype T1 (prefix a1 T2))) ->
@@ -828,8 +1034,9 @@ Lemma adj_diamond_correctness : forall T1 T2 a1 a2 Γ Δ,
 Proof.
   intros.
 Admitted.
-
+(*
 Hint Unfold translate_antecedent : core.
+*)
 Theorem correctness : forall (J : Judgement),
   well_typed J -> proves (translate J).
 Proof.
