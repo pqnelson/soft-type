@@ -488,6 +488,15 @@ Proof.
   assumption. assumption.
 Qed.
 
+Theorem ND_uncurry_tautology {Γ p q r} :
+  Γ ⊢ Implies (Implies p (Implies q r)) (Implies (And p q) r).
+Proof.
+  intros.
+  apply ND_imp_i2.
+  apply ND_uncurry.
+  apply ND_assume; prove_In.
+Qed.
+
 
 Theorem ND_and_context {Γ p q r} :
   (And p q)::Γ ⊢ r <-> p::q::Γ ⊢ r.

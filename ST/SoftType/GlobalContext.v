@@ -76,8 +76,13 @@ Fixpoint gc_defines_attr (gc : GlobalContext) (n : name) : Prop :=
   | _ => False
   end.
 
-Fixpoint gc_contains (Γ : GlobalContext) (def : (LocalContext * JudgementType)) : Prop :=
+(* This is what *I* would want, as a user of the system... *)
+Fixpoint gc_contains_generous (Γ : GlobalContext) (def : (LocalContext * JudgementType)) : Prop :=
   match Γ,def with
-  | List.cons (lc, J') Γ', (subcontext, J) => ((lc_is_subcontext subcontext lc) /\ J = J') \/ gc_contains Γ' def
+  | List.cons (lc, J') Γ', (subcontext, J) => ((lc_is_subcontext subcontext lc) /\ J = J') \/ gc_contains_generous Γ' def
   | List.nil, _ => False
   end.
+
+(* This is what I want, when proving properties of the system... *)
+Definition gc_contains (Γ : GlobalContext) (def : (LocalContext * JudgementType)) : Prop :=
+  List.In def Γ.

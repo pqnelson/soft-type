@@ -554,10 +554,24 @@ judgement types  [Esti tm Tp], [Subtype T1 T2], and [Inhabited T].
 (** * Main Results
 
 We can now articulate the correctness results. *)
+Check translate_antecedent.
+
+(* Tedious proof by induction, sigh *)
+Theorem global_context_to_context : forall (Γ : GlobalContext) (Δ : LocalContext) (J : JudgementType),
+  (proves (translate (Γ;; Δ |- J))) <-> ((map translate_definition Γ) ⊢ (translate_antecedent Δ J)).
+Proof.
+Admitted.
 
 Lemma assume_correctness : forall (Γ : GlobalContext) (Δ : LocalContext) (J : JudgementType),
   gc_contains Γ (Δ, J) -> proves (translate (Γ;; Δ |- J)).
 Proof.
+  intros.
+  apply global_context_to_context.
+  assert (List.In (translate_definition (Δ, J)) (map translate_definition Γ)). {
+    admit.
+  }
+  apply ND_assume in H0.
+  assumption.
 Admitted.
 
 Lemma empty_context_correctness :
@@ -937,10 +951,7 @@ Proof.
    apply subcontext_weaken; apply subcontext_weaken; apply subcontext_reflex.
    apply ND_assume; prove_In.
 Qed.
-(*
-Hint Unfold GlobalContext LocalContext.
-Hint Unfold GlobalContext LocalContext : typeclass_instances.
-*)
+
 Corollary adj_subtype_adj_correctness : forall Γ Δ a T1 T2,
   proves (translate (Γ;; Δ |- Subtype T1 T2)) ->
   proves (translate (Γ;; Δ |- Subtype (prefix a T2) T2)) ->
@@ -1025,6 +1036,28 @@ Proof.
     2: assumption.
     apply (variadic_modus_ponens (p := (Forall (Implies (And (translate a) (translate T2)) (translate T2))))).
     assumption. assumption.
+Qed.
+
+Lemma diamond_lemma : forall (Γ : list Formula) (p q a1 a2 : Formula),
+  Γ ⊢ Implies (Forall (Implies p (And a1 q)))
+              (Implies (Forall (Implies p (And a2 q)))
+                       (Forall (Implies p (And a1 (And a2 q))))).
+Proof.
+  intros.
+  apply ND_imp_i2; apply ND_imp_i2.
+  set (t := fresh_evar (Forall (Implies p (And a2 q)) :: Forall (Implies p (And a1 q)) :: Γ) Falsum).
+  apply (ND_forall_i (t := t)). 2: unfold t; reflexivity.
+  simpl. apply ND_imp_i2.
+  Assume (capture_free_subst 0 t p :: Forall (Implies p (And a2 q)) :: Forall (Implies p (And a1 q)) :: Γ ⊢ Forall (Implies p (And a1 q))).
+  Assume (capture_free_subst 0 t p :: Forall (Implies p (And a2 q)) :: Forall (Implies p (And a1 q)) :: Γ ⊢ Forall (Implies p (And a2 q))).
+  Check @ND_forall_elim.
+  apply (ND_forall_elim (t := t)) in H; simpl in H.
+  apply (ND_forall_elim (t := t)) in H0; simpl in H0.
+  apply (ND_imp_e (p := capture_free_subst 0 t p)) in H. 2: apply ND_assume; prove_In.
+  apply (ND_imp_e (p := capture_free_subst 0 t p)) in H0. 2: apply ND_assume; prove_In.
+  apply ND_proj_l in H as H1.
+  apply (ND_and_intro (P := (capture_free_subst 0 t a1))).
+  assumption. assumption.
 Qed.
 
 Lemma adj_diamond_correctness : forall T1 T2 a1 a2 Γ Δ,
