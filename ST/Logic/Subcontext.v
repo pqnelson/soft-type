@@ -35,22 +35,6 @@ Proof.
 Qed.
 
 
-Ltac prove_In :=
-match goal with
-| |- In ?P (?P :: ?Γ) => left; reflexivity
-| |- In ?P (?Q :: ?Γ) => right; prove_In
-end.
-Ltac prove_subcontext :=
-match goal with
-| |- ?P :: ?Γ ⊆ ?Γ' => rewrite subcontext_cons; split;
-     [ prove_In | prove_subcontext ]
-| |- ?Γ ⊆ ?Γ => reflexivity
-| |- ?Γ ⊆ ?P :: ?Γ' => rewrite <- (cons_subcontext P Γ');
-                       prove_subcontext
-end.
-
-Import ListNotations.
-Open Scope list.
 
 Lemma subcontext_trans : forall (Γ1 Γ2 Γ3 : list Formula),
   Γ1 ⊆ Γ2 -> Γ2 ⊆ Γ3 -> Γ1 ⊆ Γ3.
@@ -64,6 +48,23 @@ Proof.
   intros. assert (Γ2 ⊆ (List.cons P Γ2)). { apply cons_subcontext. }
   apply (subcontext_trans Γ1 Γ2 (P :: Γ2)) in H0. assumption. assumption.
 Qed.
+
+Ltac prove_In :=
+match goal with
+| |- In ?P (?P :: ?Γ) => left; reflexivity
+| |- In ?P (?Q :: ?Γ) => right; prove_In
+end.
+Ltac prove_subcontext :=
+match goal with
+| |- (?p :: ?Γ)%list ⊆ ?Γ' => rewrite subcontext_cons; split;
+     [ prove_In | prove_subcontext ]
+| |- ?Γ ⊆ (?p :: ?Γ')%list => apply (subcontext_weaken Γ Γ' p);
+                       prove_subcontext
+| |- ?Γ ⊆ ?Γ => reflexivity
+end.
+Check cons_subcontext.
+Import ListNotations.
+Open Scope list.
   
 Lemma subcontext_weaken2 : forall (Γ1 Γ2 : list Formula) (P : Formula),
   Γ1 ⊆ Γ2 -> P :: Γ1 ⊆ P :: Γ2.

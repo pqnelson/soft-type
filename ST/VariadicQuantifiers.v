@@ -725,6 +725,20 @@ Proof.
     rewrite H0. rewrite every_ind. reflexivity.
 Qed.
 
+Lemma move_forall_from_antecedent {Γ} :
+  forall (m : nat) (p q : Formula),
+  Γ ⊢ Implies p (Forall q) -> Γ ⊢ Implies (lift 0 1 p) q.
+Proof.
+  intros.
+  apply ND_imp_i2.
+  set (t := fresh_evar (lift 0 1 p :: Γ) Falsum).
+  apply (@weakening Γ (p::Γ)) in H as H1.
+  Assume(p :: Γ ⊢ p).
+  apply (ND_imp_e (p := p)) in H1. 2: assumption. 2: prove_subcontext.
+  Check @ND_forall_elim.
+  apply (ND_forall_elim (t := t)) in H1 as H2.
+Admitted.
+
 Lemma move_every_from_antecedent1 {Γ} :
   forall (m : nat) (p q : Formula),
   Γ ⊢ Every m (Implies p (Forall q)) -> Γ ⊢ Every (S m) (Implies (lift 0 1 p) q).
