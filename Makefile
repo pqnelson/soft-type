@@ -3,7 +3,9 @@ FILES=Vector.v EVarsScratchwork.v Logic/V.v Logic/Term.v \
 	SoftType/Radix.v SoftType/Attribute.v SoftType/Adjective.v \
 	SoftType/SoftType.v SoftType/JudgementType.v SoftType/LocalContext.v SoftType/GlobalContext.v \
 	SoftType.v \
-	Logic/Predicate.v Logic/Formula.v Logic/Subcontext.v Logic.v VariadicQuantifiers.v
+	Logic/Predicate.v Logic/Formula.v Logic/Subcontext.v Logic.v VariadicQuantifiers.v \
+	Translation.v
+
 current_dir = $(shell pwd)
 
 %.v: FORCE

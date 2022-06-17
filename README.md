@@ -8,6 +8,9 @@ The basic components are:
 3. A translation of soft-types into first-order logic.
 4. The results concerning correctness.
 
+I'm basically doing something like test-driven coding in Coq, where the
+`Example` environment is used for tests.
+
 # License
 
 Everything is under the MIT License.
@@ -20,6 +23,12 @@ Everything is under the MIT License.
   [Eprint](http://www.cs.ru.nl/F.Wiedijk/mizar/miztype.pdf).
 
 ## First-order logic encodings
+
+A lot of the inspiration for encoding natural deduction comes from
+Daniel Schepler's 
+[coq-sequent-calculus](https://github.com/dschepler/coq-sequent-calculus).
+For locally nameless encoding and first-order logic considerations, I
+consulted (among the random books in my bookcase):
 
 - Andreas Halkjær From,
   "Formalized First-Order Logic".

@@ -59,7 +59,7 @@ Definition push {A : Type} (a : A) (l : list A) : list A :=
   List.app l (List.cons a List.nil).
 Close Scope string_scope.
 Import ListNotations.
-  
+
 Notation "gc ;; lc |- j" := (gc, lc, j) (at level 80).
 Import ListNotations.
 Open Scope list_scope.
@@ -72,7 +72,7 @@ Inductive well_typed : Judgement -> Prop :=
 | wt_subst : forall (Γ : GlobalContext) (Δ : LocalContext) (t : Term) (T : SoftType) (J : JudgementType),
   well_typed (Γ ;; (List.cons T Δ) |- J) ->
   well_typed (Γ ;; Δ |- Esti t T) ->
-  well_typed (Γ ;; Δ |- (subst (BVar (length Δ)) t J))
+  well_typed (Γ ;; (capture_free_subst 0 t Δ) |- (subst (BVar (length Δ)) t J))
 (* XXX Wiedijk combines this [wt_assume] rule with [wt_subst] in a single step, I decompose them into two. *)
 | wt_assume : forall (Γ : GlobalContext) (Δ : LocalContext) (J : JudgementType),
   gc_contains Γ (Δ, J) ->

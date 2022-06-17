@@ -115,3 +115,18 @@ Fixpoint lc_is_subcontext (subcontext lc : LocalContext) : Prop :=
   | List.cons (x,T) subcontext' => List.In (x,T) lc /\ lc_is_subcontext subcontext' lc
   | List.nil => True
   end.
+
+Fixpoint capture_free_subst (n : nat) (t : Term) (lc : LocalContext) :=
+match lc with
+| []%list => lc
+| (h::tl)%list => ((subst (BVar n) (lift (S n) 1 t) h)::(capture_free_subst (S n) (lift (S n) 1 t) tl))%list
+end.
+
+Example capture_free_subst_ex1 :
+let t0 := constant "t0"
+in  capture_free_subst 0 t0 
+[([], Mode 1 "T1" [Var (BVar 0)]%vector); ([], Mode 2 "T2" [Var (BVar 1); Var (BVar 0)]%vector)]%list
+=  [([], Mode 1 "T1" [t0]%vector); ([], Mode 2 "T2" [t0; Var (BVar 0)]%vector)]%list.
+Proof.
+  auto.
+Qed.
