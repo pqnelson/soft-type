@@ -554,8 +554,6 @@ judgement types  [Esti tm Tp], [Subtype T1 T2], and [Inhabited T].
 (** * Main Results
 
 We can now articulate the correctness results. *)
-Check translate_antecedent.
-
 (* Tedious proof by induction, sigh *)
 Theorem global_context_to_context : forall (Γ : GlobalContext) (Δ : LocalContext) (J : JudgementType),
   (proves (translate (Γ;; Δ |- J))) <-> ((map translate_definition Γ) ⊢ (translate_antecedent Δ J)).
@@ -1023,10 +1021,12 @@ Proof.
     apply (ND_imp_e (p := translate Γ)) in H0.
     2: assumption. 2: assumption. 2: assumption.
     apply ND_imp_i2.
+    (*
     Check (variadic_modus_ponens (Γ := [translate Γ]) (a := trΔ) (m := m)
      (p := Forall (Implies (translate T1) (translate T2)))
         (q := (Implies (Forall (Implies (And (translate a) (translate T2)) (translate T2)))
               (Forall (Implies (And (translate a) (translate T1)) (And (translate a) (translate T2))))))).
+    *)
     assert ([translate Γ] ⊢ Implies (Forall (Implies (translate T1) (translate T2)))
            (Implies (Forall (Implies (And (translate a) (translate T2)) (translate T2)))
                     (Forall (Implies (And (translate a) (translate T1)) (And (translate a) (translate T2)))))). {
@@ -1050,7 +1050,6 @@ Proof.
   simpl. apply ND_imp_i2.
   Assume (capture_free_subst 0 t p :: Forall (Implies p (And a2 q)) :: Forall (Implies p (And a1 q)) :: Γ ⊢ Forall (Implies p (And a1 q))).
   Assume (capture_free_subst 0 t p :: Forall (Implies p (And a2 q)) :: Forall (Implies p (And a1 q)) :: Γ ⊢ Forall (Implies p (And a2 q))).
-  Check @ND_forall_elim.
   apply (ND_forall_elim (t := t)) in H; simpl in H.
   apply (ND_forall_elim (t := t)) in H0; simpl in H0.
   apply (ND_imp_e (p := capture_free_subst 0 t p)) in H. 2: apply ND_assume; prove_In.

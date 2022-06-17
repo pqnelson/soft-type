@@ -759,29 +759,121 @@ Proof.
     rewrite H0.
     simpl; auto.
 Qed.
-  
-(*
-  - 
-  destruct x as[|n].
-  - simpl; auto. (* le_gt_dec n m: {n <= m} + {n > m} *)
-  - assert({c <= n} + {c > n}). apply le_gt_dec. destruct H.
-  + rewrite case_lift_is_not_id. rewrite case_lift_is_not_id. rewrite case_lift_is_not_id.
-    assert (n + d2 + d1 = n + (d1 + d2)). { lia. } rewrite H; reflexivity.
-    assumption. lia. assumption.
-  + rewrite case_lift_is_id. rewrite case_lift_is_id. rewrite case_lift_is_id. reflexivity.
-    assumption. assumption. assumption.
-Qed.
-*)
 
-(*
-  - reflexivity.
-  - bdestruct (Nat.ltb n k1).
-  + apply case_lift_is_id; simpl; auto. lia.
-  + apply case_lift_is_not_id with (i := i) in H1 as H2.
-    rewrite H0 in H2. inversion H2. rewrite <- H4. rewrite <- H4.
-    apply Tauto.if_same.
+Theorem lift_seq : forall (c d1 d2 : nat) (t : Term),
+  d1 > 0 -> lift (S c) d2 (lift c d1 t) = lift c (d2 + d1) t.
+Proof.
+  intros.
+  induction t.
+  - unfold lift; unfold liftTerm; unfold term_map_var. rewrite V.lift_seq. reflexivity. assumption.
+  - unfold lift; unfold liftTerm; unfold term_map_var. reflexivity.
+  - unfold lift; unfold liftTerm.
+    rewrite (Vector.Forall_forall Term (fun t : Term => lift (S c) d2 (lift c d1 t) = lift c (d2 + d1) t) n t) in H0.
+    assert (term_map_var (lift c d1) (Fun n0 t) = Fun n0 (Vector.map (lift c d1) t)). {
+      unfold term_map_var; simpl; auto.
+    } rewrite H1. clear H1.
+    assert (term_map_var (lift (S c) d2) (Fun n0 (map (lift c d1) t)) = Fun n0 (map (lift (S c) d2) (map (lift c d1) t))). {
+      simpl; auto.
+    }
+    assert (term_map_var (lift c (d2 + d1)) (Fun n0 t) = Fun n0 (map (lift c (d2 + d1)) t)). {
+      simpl; auto.
+    } rewrite H1; rewrite H2. clear H1 H2.
+    assert (map (lift (S c) d2) (map (lift c d1) t) = map (lift c (d2 + d1)) t). {
+      induction t as [| h tl].
+      - simpl; auto.
+      - assert (map (lift (S c) d2) (map (lift c d1) (h :: t)) = (lift (S c) d2 (lift c d1 h))::map (lift (S c) d2) (map (lift c d1) t)). {
+          simpl; auto.
+        } 
+        assert (forall a : Term, VectorDef.In a t -> lift (S c) d2 (lift c d1 a) = lift c (d2 + d1) a). {
+          intros. apply In_cons_tl with (x := h) in H2. apply H0 in H2. assumption.
+        }
+        apply IHt in H2. rewrite H1; rewrite H2.
+        assert (lift (S c) d2 (lift c d1 h) = lift c (d2 + d1) h). {
+          apply H0. apply In_cons_hd.
+        }
+        rewrite H3.
+        simpl; auto.
+    }
+    rewrite H1; reflexivity.
 Qed.
-*)
+
+(* WTS: (lift (S m) 1 (lift 1 m t)) = lift 1 (S m) t *)
+Corollary variadic_quantifier_lift_seq :
+  forall (m k : nat) (t : Term),
+  k > 0 -> (lift (k + m) 1 (lift k m t)) = lift k (S m) t.
+Proof.
+  intros. induction t.
+  - unfold lift; unfold liftTerm; unfold term_map_var. rewrite V.variadic_quantifier_lift_seq. reflexivity. assumption.
+  - unfold lift; unfold liftTerm; unfold term_map_var. reflexivity.
+  - unfold lift; unfold liftTerm.
+    rewrite (Vector.Forall_forall Term (fun t : Term => lift (k + m) 1 (lift k m t) = lift k (S m) t) n t) in H0.
+    assert (term_map_var (lift k (S m)) (Fun n0 t) = Fun n0 (Vector.map (lift k (S m)) t)). {
+      unfold term_map_var; simpl; auto.
+    } rewrite H1; clear H1.
+    assert (term_map_var (lift (k + m) 1) (Fun n0 (map (lift k m) t)) = Fun n0 (map (lift (k + m) 1) (map (lift k m) t))). {
+      simpl; auto.
+    }
+    assert (term_map_var (lift k m) (Fun n0 t) = Fun n0 (map (lift k m) t)). {
+      simpl; auto.
+    } rewrite H2; rewrite H1. clear H2 H1.
+    assert (map (lift (k + m) 1) (map (lift k m) t) = map (lift k (S m)) t). {
+      induction t as [| h tl].
+      - simpl; auto.
+      - assert (map (lift (k + m) 1) (map (lift k m) (h :: t)) 
+                = (lift (k + m) 1 (lift k m h))::map (lift (k + m) 1) (map (lift k m) t)). {
+          simpl; auto.
+        }
+        assert (forall a : Term, VectorDef.In a t -> lift (k + m) 1 (lift k m a) = lift k (S m) a). {
+          intros. apply In_cons_tl with (x := h) in H2. apply H0 in H2. assumption.
+        }
+        apply IHt in H2. rewrite H1; rewrite H2.
+        assert (lift (k + m) 1 (lift k m h) = lift k (S m) h). {
+          apply H0. apply In_cons_hd.
+        }
+        rewrite H3.
+        simpl; auto.
+    }
+    rewrite H1; reflexivity.
+Qed.
+
+(* lift (S (S m)) 1 (lift 2 m A)) = Exists (lift 2 (S m) A) *)
+Corollary vect_variadic_quantifier_lift_seq :
+  forall (m k : nat) {n : nat} (args : Vector.t Term n),
+  k > 0 ->
+  Vector.map (lift (k + m) 1) (Vector.map (lift k m) args) 
+  = Vector.map (lift k (S m)) args.
+Proof.
+  induction args as [| h t].
+  - simpl; auto.
+  - intros.
+    assert (map (lift (k + m) 1) (map (lift k m) (h :: args)) 
+            = (lift (k + m) 1 (lift k m h))::map (lift (k + m) 1) (map (lift k m) args)). {
+      simpl; auto.
+    } rewrite H0. rewrite IHargs.
+    assert (lift (k + m) 1 (lift k m h) = lift k (S m) h). {
+      apply variadic_quantifier_lift_seq; assumption.
+    }
+    rewrite H1.
+    simpl; auto. assumption.
+Qed.
+
+Theorem vect_lift_seq : forall (c d2 d1 : nat) {n : nat} (args : Vector.t Term n),
+  d1 > 0 ->
+  Vector.map (lift (S c) d2) (Vector.map (lift c d1) args) 
+  = Vector.map (lift c (d2 + d1)) args.
+Proof.
+  induction args as [| h t].
+  - simpl; auto.
+  - intros.
+    assert (map (lift (S c) d2) (map (lift c d1) (h :: args)) = (lift (S c) d2 (lift c d1 h))::map (lift (S c) d2) (map (lift c d1) args)). {
+      simpl; auto.
+    } rewrite H0. rewrite IHargs.
+    assert (lift (S c) d2 (lift c d1 h) = lift c (d2 + d1) h). {
+      apply lift_seq; assumption.
+    }
+    rewrite H1.
+    simpl; auto. assumption.
+Qed.
 
 Definition term_is_fun (t : Term) : Prop :=
   match t with
@@ -810,6 +902,21 @@ end.
 Global Instance FreshTerm : Fresh Term := {
   fresh := fresh_term
 }.
+
+Theorem fresh_not_reflex : forall (t : Term),
+  ~fresh t t.
+Proof.
+  intros. assert (t = t). { reflexivity. }
+  destruct t.
+  - auto.
+  - auto.
+  - unfold fresh; unfold FreshTerm; unfold fresh_term; auto.
+    assert (~(Fun n0 t <> Fun n0 t)). { auto. }
+    apply or_not_and. left. auto.
+Qed.
+
+Definition fresh_vect (c : Term) {n} (args : Vector.t Term n) : Prop :=
+  Vector.Forall (fresh c) args.
 
 (** ** New Existential Variables 
 

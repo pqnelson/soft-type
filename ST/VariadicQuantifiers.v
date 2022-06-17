@@ -702,7 +702,28 @@ Lemma not_some_not_is_every {Γ} :
     2: assumption.
 *)
 
-
+Lemma capture_free_subst_every :
+  forall (m n : nat) (p : Formula) (t : Term),
+  capture_free_subst 0 t (Every m p) = Every m (capture_free_subst m (lift 1 m t) p).
+Proof.
+  intros. generalize dependent p.
+  induction m.
+  - intros; unfold Every. assert (lift 1 0 t = t). {
+      apply (Term.bigger_lift_is_id 0 0 1). lia. apply term_zero_lift_is_id.
+    } rewrite H; reflexivity.
+  - intros; assert ((Every (S m) p) = (Every m (Forall p))). { symmetry; apply every_ind. }
+    rewrite H. rewrite (IHm (Forall p)). rewrite forall_subst.
+    fold (Every (S m)).
+    assert (lift (S m) 1 (lift 1 m t) = lift 1 (S m) t). {
+      assert (lift (S m) 1 (lift 1 m t) = lift (1 + m) 1 (lift 1 m t)). {
+        assert (S m = 1 + m). lia.
+        rewrite H0. reflexivity.
+      }
+      rewrite H0.
+      apply (Term.variadic_quantifier_lift_seq m 1 t). lia.
+    }
+    rewrite H0. rewrite every_ind. reflexivity.
+Qed.
 
 Theorem move_every_from_antecedent {Γ} :
   forall (m n : nat) (p q : Formula),
@@ -739,13 +760,42 @@ gc :: Γ ⊢ Forall (Every m (Implies A body))
 *)
 Admitted.
 
+Lemma testing_multiple_forall_stuff2 {Γ p q r} :
+  Γ ⊢ Implies q r ->
+  Γ ⊢ Forall (Forall (Implies p q)) ->
+  Γ ⊢ Forall (Forall (Implies p r)).
+Proof.
+  intros.
+  set (t1 := fresh_evar Γ Falsum).
+  apply (ND_forall_i (t := t1)). 2: unfold t1; reflexivity.
+  assert (capture_free_subst 0 t1 (Forall (Implies p r))
+          = Forall (Implies (capture_free_subst 1 t1 p)
+                            (capture_free_subst 1 t1 r))). {
+    simpl; auto.
+  } rewrite H1.
+  apply (ND_forall_i (t := t1)). 2: unfold t1; reflexivity.
+  assert (capture_free_subst 0 t1 (Implies (capture_free_subst 1 t1 p) (capture_free_subst 1 t1 r))
+          = Implies (capture_free_subst 0 t1 ((capture_free_subst 1 t1 p)))
+                    (capture_free_subst 0 t1 ((capture_free_subst 1 t1 r)))). {
+    simpl; auto.
+  } rewrite H2.
+  apply ND_imp_i2. clear H1 H2.
+  apply (ND_forall_elim (t := Var (BVar (pred 0)))) in H0 as H1.
+  rewrite forall_subst in H1.
+  unfold lift in H1; unfold liftTerm in H1; unfold term_map_var in H1; unfold lift in H1;
+  unfold VLift in H1; simpl in H1.
+Admitted.
+
+(* Actually used *)
 Theorem variadic_transport {Γ m p q r} :
   Γ ⊢ Implies q r ->
   Γ ⊢ Every m (Implies p q) ->
   Γ ⊢ Every m (Implies p r).
 Proof.
+  intros.
 Admitted.
 
+(* Actually used. *)
 Theorem variadic_modus_ponens {Γ m a p q} :
   Γ ⊢ Every m (Implies a (Implies p q)) ->
   Γ ⊢ Every m (Implies a p) ->
@@ -753,6 +803,7 @@ Theorem variadic_modus_ponens {Γ m a p q} :
 Proof.
 Admitted.
 
+(* Actually used. *)
 Theorem variadic_universal_hypothetical_syllogism {Γ m p q r} :
   Γ ⊢ Implies (Every m (Implies p q))
         (Implies (Every m (Implies q r)) (Every m (Implies p r))).

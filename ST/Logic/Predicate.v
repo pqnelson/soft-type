@@ -161,10 +161,36 @@ Proof.
   rewrite vect_lift_comp. reflexivity.
 Qed.
 
+Theorem lift_seq : forall (c d2 d1 : nat) (p : Predicate),
+  d1 > 0 -> lift (S c) d2 (lift c d1 p) = lift c (d2 + d1) p.
+Proof.
+  intros. destruct p as [n nm args].
+  unfold lift; unfold LiftPred.
+  rewrite vect_lift_seq. reflexivity. assumption.
+Qed.
+
+(*
+Theorem variadic_lift_seq : forall (m : nat) (p : Predicate),
+  (lift (S m) 1 (lift 1 m p)) = lift 1 (S m) p.
+Proof.
+  intros. destruct p as [n nm args].
+  unfold lift; unfold LiftPred.
+  rewrite vect_variadic_quantifier_lift_seq. reflexivity.
+Qed.
+*)
+Corollary variadic_quantifier_lift_seq :
+  forall (m k : nat) (p : Predicate),
+  k > 0 -> (lift (k + m) 1 (lift k m p)) = lift k (S m) p.
+Proof.
+  intros. destruct p as [n nm args].
+  unfold lift; unfold LiftPred.
+  rewrite vect_variadic_quantifier_lift_seq. reflexivity. assumption.
+Qed.
+
 Global Instance FreshPredicate : Fresh Predicate := {
   fresh (c : Term) (p : Predicate) :=
   match p with
-  | P n s args => Vector.Forall (fun (arg : Term) => fresh c arg) args
+  | P n s args => Term.fresh_vect c args
   end
 }.
 

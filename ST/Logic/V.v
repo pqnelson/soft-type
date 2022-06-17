@@ -73,6 +73,12 @@ Inductive V :=
 | FVar : name -> V
 | BVar : nat -> V.
 
+Definition is_free (x : V) :=
+match x with
+| FVar _ => True
+| _ => False
+end.
+
 Global Instance VEq : Eq V := {
   eqb (x y : V) :=
   match x, y with
@@ -214,6 +220,81 @@ Proof.
   + rewrite case_lift_is_id. rewrite case_lift_is_id. rewrite case_lift_is_id. reflexivity.
     assumption. assumption. assumption.
 Qed.
+
+Theorem lift_seq : forall (c d1 d2 : nat) (x : V),
+  d1 > 0 -> lift (S c) d2 (lift c d1 x) = lift c (d2 + d1) x.
+Proof.
+  intros.
+  destruct x as [|n].
+  - simpl; auto.
+  - assert({c <= n} + {c > n}). apply le_gt_dec. destruct H0.
+  + rewrite case_lift_is_not_id. 
+    rewrite case_lift_is_not_id.
+    rewrite case_lift_is_not_id.
+    rewrite Plus.plus_assoc_reverse; rewrite (Nat.add_comm d1 d2). 
+    reflexivity.
+    assumption. lia. assumption.
+  + rewrite case_lift_is_id. rewrite case_lift_is_id. rewrite case_lift_is_id. reflexivity.
+    assumption. lia. assumption.
+Qed.
+
+(* WTS: (lift (S m) 1 (lift 1 m t)) = lift 1 (S m) t *)
+Corollary variadic_quantifier_lift_seq_general :
+  forall (c1 c2 m : nat) (x : V),
+  c2 + m = c1 -> (lift (c2 + m) 1 (lift c1 m x)) = lift c1 (S m) x.
+Proof.
+  intros. destruct x.
+  - simpl; auto.
+  - assert({c1 <= n} + {c1 > n}). apply le_gt_dec. destruct H0.
+  + rewrite case_lift_is_not_id. 
+    rewrite case_lift_is_not_id.
+    rewrite case_lift_is_not_id.
+    assert (n + m + 1 = n + S m). lia. rewrite H0. 
+    reflexivity. assumption.
+    lia. lia.
+  + rewrite case_lift_is_id.
+    rewrite case_lift_is_id.
+    rewrite case_lift_is_id. reflexivity. assumption. lia. lia.
+Qed.
+
+(* lift (S (S m)) 1 (lift 2 m A)) = Exists (lift 2 (S m) A) *)
+Corollary variadic_quantifier_lift_seq :
+  forall (m k : nat) (x : V),
+  k > 0 -> (lift (k + m) 1 (lift k m x)) = lift k (S m) x.
+Proof.
+  intros. destruct x.
+  - simpl; auto.
+  - assert({k <= n} + {k > n}). apply le_gt_dec. destruct H0.
+  + rewrite case_lift_is_not_id. 
+    rewrite case_lift_is_not_id.
+    rewrite case_lift_is_not_id.
+    assert (n + m + 1 = n + S m). lia. rewrite H0. 
+    reflexivity. assumption.
+    lia. lia.
+  + rewrite case_lift_is_id.
+    rewrite case_lift_is_id.
+    rewrite case_lift_is_id. reflexivity. assumption. lia. lia.
+Qed.
+
+(* WTS: (lift (S m) 1 (lift 1 m t)) = lift 1 (S m) t *)
+Corollary variadic_quantifier_lift_seq0 :
+  forall (m : nat) (x : V),
+  (lift (S m) 1 (lift 1 m x)) = lift 1 (S m) x.
+Proof.
+  intros. destruct x.
+  - simpl; auto.
+  - assert({1 <= n} + {1 > n}). apply le_gt_dec. destruct H.
+  + rewrite case_lift_is_not_id. 
+    rewrite case_lift_is_not_id.
+    rewrite case_lift_is_not_id.
+    assert (n + m + 1 = n + S m). lia. rewrite H. 
+    reflexivity. assumption.
+    lia. lia.
+  + rewrite case_lift_is_id.
+    rewrite case_lift_is_id.
+    rewrite case_lift_is_id. reflexivity. assumption. lia. lia.
+Qed.
+  
 
 Example shift_really_shifts : forall (n : nat), shift (BVar n) = BVar (n + 1).
 Proof.

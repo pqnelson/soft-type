@@ -2,6 +2,7 @@ Require Import String.
 Require Import Nat.
 Require Import Coq.Vectors.Vector.
 Require Import List.
+Require Import Lia.
 Import ListNotations.
 Open Scope string_scope.
 From ST Require Import EVarsScratchwork.
@@ -264,6 +265,129 @@ Proof.
     rewrite H; rewrite H0. rewrite (IHA (S c)). reflexivity.
 Qed.
 
+Theorem lift_seq : forall (c d2 d1 : nat) (A : Formula),
+  d1 > 0 -> lift (S c) d2 (lift c d1 A) = lift c (d2 + d1) A.
+Proof.
+  intros. generalize dependent c.
+  induction A.
+  - intros. simpl; auto.
+  - intros. assert(lift (S c) d2 (lift c d1 (Atom p)) = Atom (lift (S c) d2 (lift c d1 p))). {
+      simpl; auto.
+    } rewrite H0.
+    assert (lift c (d2 + d1) (Atom p) = Atom (lift c (d2 + d1) p)). {
+      simpl; auto.
+    } rewrite H1.
+    assert (lift (S c) d2 (lift c d1 p) = lift c (d2 + d1) p). {
+      apply Predicate.lift_seq. assumption.
+    } rewrite H2. reflexivity.
+  - intros. assert (lift (S c) d2 (lift c d1 (And A1 A2)) = And (lift (S c) d2 (lift c d1 A1)) (lift (S c) d2 (lift c d1 A2))). {
+      simpl; auto.
+    } rewrite H0; rewrite IHA1; rewrite IHA2.
+    assert (lift c (d2 + d1) (And A1 A2) = And (lift c (d2 + d1) A1) (lift c (d2 + d1) A2)). {
+      simpl; auto.
+    } rewrite H1. reflexivity.
+  - intros. assert (lift (S c) d2 (lift c d1 (Or A1 A2)) = Or (lift (S c) d2 (lift c d1 A1)) (lift (S c) d2 (lift c d1 A2))). {
+      simpl; auto.
+    } rewrite H0; rewrite IHA1; rewrite IHA2.
+    assert (lift c (d2 + d1) (Or A1 A2) = Or (lift c (d2 + d1) A1) (lift c (d2 + d1) A2)). {
+      simpl; auto.
+    } rewrite H1. reflexivity.
+  - intros. assert (lift (S c) d2 (lift c d1 (Implies A1 A2)) = Implies (lift (S c) d2 (lift c d1 A1)) (lift (S c) d2 (lift c d1 A2))). {
+      simpl; auto.
+    } rewrite H0; rewrite IHA1; rewrite IHA2.
+    assert (lift c (d2 + d1) (Implies A1 A2) = Implies (lift c (d2 + d1) A1) (lift c (d2 + d1) A2)). {
+      simpl; auto.
+    } rewrite H1. reflexivity.
+  - intros. assert (lift (S c) d2 (lift c d1 (Exists A)) = Exists (lift (S (S c)) d2 (lift (S c) d1 A))). { simpl; auto. }
+    assert (lift c (d2 + d1) (Exists A) = Exists (lift (S c) (d2 + d1) A)). { simpl; auto. }
+    rewrite H0; rewrite H1. rewrite (IHA (S c)). reflexivity.
+Qed.
+
+(*
+Lemma variadic_lift_seq : forall (m : nat) (A : Formula),
+  (lift (S m) 1 (lift 1 m A)) = lift 1 (S m) A.
+Proof.
+  intros. generalize dependent m.
+  induction A.
+  - intros. simpl; auto.
+  - intros. assert(lift (S m) 1 (lift 1 m (Atom p)) = Atom (lift (S m) 1 (lift 1 m p))). {
+      simpl; auto.
+    } rewrite H.
+    assert (lift 1 (S m) (Atom p) = Atom (lift 1 (S m) p)). {
+      simpl; auto.
+    } rewrite H0.
+    assert (lift (S m) 1 (lift 1 m p) = lift 1 (S m) p). {
+      apply Predicate.variadic_lift_seq.
+    } rewrite H1. reflexivity.
+  - intros. assert (lift (S m) 1 (lift 1 m (And A1 A2)) = And (lift (S m) 1 (lift 1 m A1)) (lift (S m) 1 (lift 1 m A2))). {
+      simpl; auto.
+    } rewrite H; rewrite IHA1; rewrite IHA2.
+    assert (lift 1 (S m) (And A1 A2) = And (lift 1 (S m) A1) (lift 1 (S m) A2)). {
+      simpl; auto.
+    } rewrite H0. reflexivity.
+  - intros. assert (lift (S m) 1 (lift 1 m (Or A1 A2)) = Or (lift (S m) 1 (lift 1 m A1)) (lift (S m) 1 (lift 1 m A2))). {
+      simpl; auto.
+    } rewrite H; rewrite IHA1; rewrite IHA2.
+    assert (lift 1 (S m) (Or A1 A2) = Or (lift 1 (S m) A1) (lift 1 (S m) A2)). {
+      simpl; auto.
+    } rewrite H0. reflexivity.
+  - intros. assert (lift (S m) 1 (lift 1 m (Implies A1 A2)) = Implies (lift (S m) 1 (lift 1 m A1)) (lift (S m) 1 (lift 1 m A2))). {
+      simpl; auto.
+    } rewrite H; rewrite IHA1; rewrite IHA2.
+    assert (lift 1 (S m) (Implies A1 A2) = Implies (lift 1 (S m) A1) (lift 1 (S m) A2)). {
+      simpl; auto.
+    } rewrite H0. reflexivity.
+  - intros. assert (lift (S m) 1 (lift 1 m (Exists A)) = Exists (lift (S (S m)) 1 (lift 2 m A))). { simpl; auto. }
+    assert (lift 1 (S m) (Exists A) = Exists (lift 2 (S m) A)). { simpl; auto. }
+    rewrite H; rewrite H0. rewrite (IHA (S m)). reflexivity.
+Qed.
+*)
+
+
+Lemma variadic_lift_seq : forall (k m : nat) (A : Formula),
+  k > 0 -> (lift (k + m) 1 (lift k m A)) = lift k (S m) A.
+Proof.
+  intros. generalize dependent k. generalize dependent m.
+  induction A.
+  - intros. simpl; auto.
+  - intros. assert(lift (k + m) 1 (lift k m (Atom p)) = Atom (lift (k + m) 1 (lift k m p))). {
+      simpl; auto.
+    } rewrite H0.
+    assert (lift k (S m) (Atom p) = Atom (lift k (S m) p)). {
+      simpl; auto.
+    } rewrite H1.
+    assert (lift (k + m) 1 (lift k m p) = lift k (S m) p). {
+      apply Predicate.variadic_quantifier_lift_seq. assumption.
+    } rewrite H2. reflexivity.
+  - intros. assert (lift (k + m) 1 (lift k m (And A1 A2)) 
+                    = And (lift (k + m) 1 (lift k m A1)) (lift (k + m) 1 (lift k m A2))). {
+      simpl; auto.
+    } rewrite H0; rewrite IHA1. rewrite IHA2.
+    assert (lift k (S m) (And A1 A2) = And (lift k (S m) A1) (lift k (S m) A2)). {
+      simpl; auto.
+    } rewrite H1. reflexivity. assumption. assumption.
+  - intros. assert (lift (k + m) 1 (lift k m (Or A1 A2)) = Or (lift (k + m) 1 (lift k m A1)) (lift (k + m) 1 (lift k m A2))). {
+      simpl; auto.
+    } rewrite H0; rewrite IHA1. rewrite IHA2.
+    assert (lift k (S m) (Or A1 A2) = Or (lift k (S m) A1) (lift k (S m) A2)). {
+      simpl; auto.
+    } rewrite H1. reflexivity. assumption. assumption.
+  - intros. assert (lift (k + m) 1 (lift k m (Implies A1 A2)) = Implies (lift (k + m) 1 (lift k m A1)) (lift (k + m) 1 (lift k m A2))). {
+      simpl; auto.
+    } rewrite H0; rewrite IHA1. rewrite IHA2.
+    assert (lift k (S m) (Implies A1 A2) = Implies (lift k (S m) A1) (lift k (S m) A2)). {
+      simpl; auto.
+    } rewrite H1. reflexivity. assumption. assumption.
+  - intros. assert (lift (k + m) 1 (lift k m (Exists A)) = Exists (lift (S (k + m)) 1 (lift (S k) m A))). { simpl; auto. }
+    assert (lift k (S m) (Exists A) = Exists (lift (S k) (S m) A)). { simpl; auto. }
+    rewrite H0; rewrite H1.
+    assert (lift (S k + m) 1 (lift (S k) m A) = lift (S k) (S m) A). {
+      apply (IHA m (S k)). apply Gt.gt_Sn_O.
+    }
+    assert (S k + m = S (k + m)). lia. rewrite H3 in H2.
+    rewrite H2; reflexivity.
+Qed.
+
 (**
 We now have a helper function to quantify over a given variable. They handle
 lifting and replacement, if the variable appears at all in the [Formula]. If
@@ -306,7 +430,7 @@ Global Instance FreshFormula : Fresh Formula := {
 }.
 
 Global Instance FreshContext : Fresh (list Formula) := {
-  fresh c Γ := List.Forall (fun fm => fresh c fm) Γ
+  fresh c Γ := List.Forall (fresh c) Γ
 }.
 
 (** * Listing the Existential Variables appearing in a Formula *)

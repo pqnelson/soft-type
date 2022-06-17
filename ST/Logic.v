@@ -1054,7 +1054,6 @@ Proof.
     set (t := fresh_evar (Implies (Forall p) q :: Γ) Falsum).
     apply (ND_exists_intro (Γ := Implies (Forall p) q :: Γ) (t := t)).
     simpl; auto.
-    Check @ND_forall_i.
 *)
 
 Theorem and_forall_equiv_forall_and {Γ} :
@@ -1121,7 +1120,6 @@ Theorem exists_and_implies_and_exists {Γ} :
   Γ ⊢ Implies (Exists (And p q)) (And (Exists p) (Exists q)).
 Proof.
   intros. apply ND_imp_i2.
-  Check @ND_exists_elim_small.
   set (c := fresh_evar Γ (And (Exists p) (Exists q))).
   apply (@ND_exists_elim_small Γ (And p q) (And (Exists p) (Exists q)) c).
   2: unfold c; reflexivity.
@@ -1194,7 +1192,7 @@ Qed.
 
 Corollary exists_Verum :
   proves (Exists Verum).
-Proof. Check @ND_exists_intro.
+Proof.
   set (t := fresh_evar []%list Verum).
   apply (ND_exists_intro (t := t)).
   simpl; auto; fold Verum; apply ND_True_intro.
@@ -1211,7 +1209,6 @@ Proof.
 Qed.
 
 (* Similarly, we have [Γ ⊢ Iff (Exists p) (Or (Exists p) (capture_free_subst 0 t p))]. *)
-
 
 Theorem consistency : not (proves Falsum).
 Proof.
