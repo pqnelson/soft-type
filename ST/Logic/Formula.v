@@ -187,19 +187,6 @@ Fixpoint lift_formula (c d : nat) (phi : Formula) : Formula :=
   | Exists fm => Exists (lift_formula (S c) d fm)
   end.
 
-Theorem lift_id : forall (A : Formula),
-  lift_formula 0 0 A = A.
-Proof.
-  intros. induction A.
-  - simpl; auto.
-  - unfold lift_formula. rewrite Predicate.lift_id. reflexivity.
-  - simpl; auto; rewrite IHA1; rewrite IHA2; reflexivity.
-  - simpl; auto; rewrite IHA1; rewrite IHA2; reflexivity.
-  - simpl; auto; rewrite IHA1; rewrite IHA2; reflexivity.
-  - simpl; auto. 
-(* This requires some tricky argument, but it's true. *)
-Admitted.
-
 Fixpoint unlift_formula (c d : nat) (phi : Formula) : Formula :=
   match phi with
   | Falsum => phi
@@ -225,6 +212,24 @@ Qed.
 We would encode $\forall x\exists y P(x,y)$ as 
 [Forall (Exists (Atom (P 2 "P" [BVar 1; BVar 0])))], using de Bruijn indices.
 *)
+
+Theorem lift_id : forall {n : nat} (A : Formula),
+  lift n 0 A = A.
+Proof.
+  intros.
+  assert (lift n 0 A = lift_formula n 0 A). { simpl; auto. } rewrite H; clear H.
+  generalize dependent n. induction A.
+  - intros; simpl; auto.
+  - intros; unfold lift_formula. destruct n as [|n].
+    + rewrite Predicate.lift_id. reflexivity.
+    + assert (lift 0 0 p = p). { apply Predicate.lift_id. }
+      rewrite (Predicate.bigger_lift_is_id 0 0 (S n)). 
+      reflexivity. lia. rewrite Predicate.lift_id; reflexivity.
+  - intros; simpl; auto; rewrite IHA1; rewrite IHA2; reflexivity.
+  - intros; simpl; auto; rewrite IHA1; rewrite IHA2; reflexivity.
+  - intros; simpl; auto; rewrite IHA1; rewrite IHA2; reflexivity.
+  - intros; simpl; auto; rewrite (IHA (S n)); reflexivity.
+Qed.
 
 
 Theorem lift_comp : forall (c d1 d2 : nat) (A : Formula),

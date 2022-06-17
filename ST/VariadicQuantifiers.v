@@ -725,10 +725,29 @@ Proof.
     rewrite H0. rewrite every_ind. reflexivity.
 Qed.
 
+Lemma move_every_from_antecedent1 {Γ} :
+  forall (m : nat) (p q : Formula),
+  Γ ⊢ Every m (Implies p (Forall q)) -> Γ ⊢ Every (S m) (Implies (lift 0 1 p) q).
+Proof.
+  intros. 
+Admitted.
+
 Theorem move_every_from_antecedent {Γ} :
   forall (m n : nat) (p q : Formula),
-  Γ ⊢ Every m (Implies p (Every n q)) -> Γ ⊢ Every (m + n) (Implies (lift n 0 p) q).
-Admitted.
+  Γ ⊢ Every m (Implies p (Every n q)) -> Γ ⊢ Every (m + n) (Implies (lift 0 n p) q).
+Proof.
+  intros. generalize dependent m. generalize dependent p. generalize dependent q.
+  induction n.
+  - intros. rewrite PeanoNat.Nat.add_0_r. rewrite Formula.lift_id.
+    assert (Every 0 q = q). { unfold Every; reflexivity. }
+    rewrite H0 in H. assumption.
+  - intros. assert(Γ ⊢ Every m (Implies p (Every (S n) q)) = Γ ⊢ Every m (Implies p (Forall (Every n q)))). {
+      simpl; auto.
+    }
+    rewrite H0 in H. apply (move_every_from_antecedent1 m p (Every n q)) in H as H1.
+    apply IHn in H1 as H2. rewrite lift_comp in H2. rewrite PeanoNat.Nat.add_1_r in H2.
+    rewrite (Plus.plus_Snm_nSm m n) in H2. assumption.
+Qed.
 
 Theorem provable_antecedent_result {Γ} :
   forall (m : nat) (gc A body : Formula),
