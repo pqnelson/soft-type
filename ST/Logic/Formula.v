@@ -573,4 +573,18 @@ Global Instance ContainsFormula : Contains Formula := {
   contains := contains_formula
 }.
 
+(* Syntactic substitution *)
+Fixpoint subst_formula (x : V) (t : Term) (A : Formula) :=
+match A with
+| Falsum => A
+| Atom pred => Atom (subst x t pred)
+| Or p q => Or (subst_formula x t p) (subst_formula x t q)
+| And p q => And (subst_formula x t p) (subst_formula x t q)
+| Implies p q => Implies (subst_formula x t p) (subst_formula x t q)
+| Exists p => Exists (subst_formula x t p)
+end.
 
+Global Instance SubstFormula : Subst Formula :=
+{
+  subst := subst_formula
+}.

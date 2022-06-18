@@ -1208,6 +1208,25 @@ Proof.
   - apply ND_and_context; apply ND_assume; prove_In.
 Qed.
 
+Lemma implies_verum {Γ} :
+  forall (p : Formula),
+  Γ ⊢ Implies Verum p <-> Γ ⊢ p.
+Proof. split.
+  - intros; apply (ND_imp_e (p := Verum)) in H. assumption. apply ND_True_intro.
+  - intros. apply ND_imp_i2. apply (@weakening Γ (Verum::Γ)%list) in H.
+    assumption. prove_subcontext.
+Qed.
+
+Lemma implies_forall_e {Γ} :
+  forall (p q : Formula) (t : Term),
+  Γ ⊢ Implies p (Forall q) -> 
+  Γ ⊢ Implies p (capture_free_subst 0 t q).
+Proof. intros.
+  apply ND_imp_i2; apply (@weakening Γ (p::Γ)%list) in H; Assume ((p::Γ)%list ⊢ p).
+  apply (ND_imp_e (p := p)) in H.
+  apply (ND_forall_elim (t := t)) in H. assumption. assumption. prove_subcontext.
+Qed.
+
 (* Similarly, we have [Γ ⊢ Iff (Exists p) (Or (Exists p) (capture_free_subst 0 t p))]. *)
 
 Theorem consistency : not (proves Falsum).

@@ -16,8 +16,6 @@ Import VectorNotations.
 
 We now have a mapping [|.|] of soft types, judgements, and related linguistic
 constructs, to first-order logic.
-
-For now, this is just a mocked stub.
 *)
 Class Translatable A :=
   {
@@ -25,7 +23,14 @@ Class Translatable A :=
   }.
   
 Import VectorNotations.
-  
+
+(**
+When translating a [Radix], it will either be [Ast] --- in which case it translates
+to [Verum] --- or else it will be a [Mode] type. In this case, we default to
+the case where it will be tossed into a quantifier, with its leading argument
+bound to that quantifier. For this reason, we make the first slot [BVar 0],
+and we must [shift] the remaining arguments.
+*)
 Global Instance TranslatableRadix : Translatable Radix := {
   translate (R : Radix) :=
   match R with
@@ -34,6 +39,7 @@ Global Instance TranslatableRadix : Translatable Radix := {
   end
 }.
 
+(* Unit Tests *)
 Example translate_radix_ast :
   translate (Ast) = Verum.
 Proof. simpl; auto. Qed.
@@ -43,6 +49,8 @@ Example translate_radix_mode_1 :
   = Atom (P 4 "Mode_MyMode" [(Var (BVar 0)); (Var (FVar "x")); (constant "c"); (Var (BVar 4))]).
 Proof. unfold constant; simpl; auto. Qed.
 
+(** The same caveat applies to attributes, namely its first argument will be
+[BVar 0], and we must shift the remaining arguments. *)
 Global Instance TranslatableAttr : Translatable Attribute := {
   translate (attr : Attribute) :=
   match attr with
@@ -50,11 +58,14 @@ Global Instance TranslatableAttr : Translatable Attribute := {
   end
 }.
 
+(* Unit Tests *)
 Example translate_attr_1 :
   translate (Attr 3 "MyMode" [(Var (FVar "x")); (constant "c"); (Var (BVar 3))])
   = Atom (P 4 "Attr_MyMode" [(Var (BVar 0)); (Var (FVar "x")); (constant "c"); (Var (BVar 4))]).
 Proof. unfold constant; simpl; auto. Qed.
 
+(** Adjectives can be translated simply thanks to the [Attribute] doing the
+heavy lifting. Negated adjectives produce simply the negated [Attribute] translation. *)
 Global Instance TranslatableAdj : Translatable Adjective := {
   translate (adj : Adjective) :=
   match adj with
@@ -63,6 +74,7 @@ Global Instance TranslatableAdj : Translatable Adjective := {
   end
 }.
 
+(* Unit Tests *)
 Example translate_adj_1 :
   translate (Pos (Attr 3 "SimplyConnected" [(Var (FVar "x")); (constant "c"); (Var (BVar 3))]))
   = Atom (P 4 "Attr_SimplyConnected" [(Var (BVar 0)); (Var (FVar "x")); (constant "c"); (Var (BVar 4))]).
@@ -73,6 +85,7 @@ Example translate_adj_2 :
   = Not (Atom (P 4 "Attr_SimplyConnected" [(Var (BVar 0)); (Var (FVar "x")); (constant "c"); (Var (BVar 4))])).
 Proof. unfold constant; simpl; auto. Qed.
 
+(* Helper functions for translating soft types. *)
 Definition null {A} (l : list A) : bool :=
 match l with
 | []%list => true
@@ -117,6 +130,7 @@ Global Instance TranslatableSoftType : Translatable SoftType := {
   end
 }.
 
+(* Unit Tests *)
 Example translate_soft_type_1 :
 let st : SoftType := ([Neg (Attr 3 "SimplyConnected" [(Var (FVar "x")); (constant "c"); 
                        (Var (BVar 3))]%vector);
@@ -151,7 +165,10 @@ Qed.
 
 (* The [capture_free_subst] usage here requires shifting, then unshifting,
 the bound variables. Otherwise, we end up with accidentally capturing the
-wrong variables later on. 
+wrong variables later on. This is due to the conventions adopted earlier on,
+to make the first slot [BVar 0] and to shift the remaining arguments. It's
+precisely what is needed for the [Subtype] and [Inhabited] judgement types,
+but for [Esti] we must "undo" this decision.
 
 We are assuming the translation of any [SoftType] is a conjunction of
 predicates whose first argument corresponds to a [Term]. This is the whole
@@ -168,6 +185,7 @@ Global Instance TranslatableJudgementType : Translatable JudgementType := {
   end
 }.
 
+(* Unit Tests *)
 Example translate_judgement_1 :
 translate (Esti (Fun "Sphere" [(constant "n")])
   ([Pos (Attr 0 "Smooth" []%vector); (Pos (Attr 1 "-dimensional" [(constant "n")]%vector))]%list, (Mode 1 "Manifold" [(constant "REAL")])))
@@ -175,7 +193,30 @@ translate (Esti (Fun "Sphere" [(constant "n")])
   in And (Atom (P 1 "Attr_Smooth" [ sphere ]))
          (And (Atom (P 2 "Attr_-dimensional" [sphere; Fun "n" []]))
               (Atom (P 2 "Mode_Manifold" [sphere; Fun "REAL" []]))).
-Proof. unfold constant; simpl; auto. Qed.
+Proof. cbv; auto. Qed.
+
+Example translate_judgement_2 :
+translate (Esti (Fun "FrattiniSubgroup" [(Var (BVar 0))])
+  ([Pos (Attr 1 "-local" [(Var (BVar 0))]%vector); 
+   (Pos (Attr 1 "-parabolic" [(constant "n")]%vector))]%list, 
+   (Mode 2 "Subgroup" [(constant "G"); Var (BVar 0)])))
+= let G : Term := (Fun "FrattiniSubgroup" [(Var (BVar 0))])
+  in And (Atom (P 2 "Attr_-local" [ G; Var (BVar 0) ]))
+         (And (Atom (P 2 "Attr_-parabolic" [G; (constant "n")]))
+              (Atom (P 3 "Mode_Subgroup" [G; (constant "G"); Var (BVar 0)]))).
+Proof. cbv. auto. Qed.
+
+Example translate_judgement_3 :
+translate (Inhabited
+  ([Pos (Attr 1 "-local" [(Var (BVar 0))]%vector); 
+   (Pos (Attr 1 "-parabolic" [(constant "n")]%vector))]%list, 
+   (Mode 2 "Subgroup" [(constant "G"); Var (BVar 1)])))
+= let x : Term := (Var (BVar 0))
+  in 
+Exists (And (Atom (P 2 "Attr_-local" [ x; Var (BVar 1) ]))
+            (And (Atom (P 2 "Attr_-parabolic" [x; (constant "n")]))
+                 (Atom (P 3 "Mode_Subgroup" [x; (constant "G"); Var (BVar 2)])))).
+Proof. cbv. auto. Qed.
 
 (** Global definitions are a list of definitions, which are a [LocalContext]
 and a [JudgementType]. There may be a clever way to encode this, but I am at
@@ -554,19 +595,100 @@ judgement types  [Esti tm Tp], [Subtype T1 T2], and [Inhabited T].
 (** * Main Results
 
 We can now articulate the correctness results. *)
+(* Tedious proof by induction, sigh *)
+Theorem global_context_to_context : forall (Γ : GlobalContext) (Δ : LocalContext) (J : JudgementType),
+  (proves (translate (Γ;; Δ |- J))) <-> ((map translate_definition Γ) ⊢ (translate_antecedent Δ J)).
+Proof. intro.
+  induction Γ as [ | h Γ'].
+  - unfold map. unfold translate; unfold TranslatableJudgement; unfold translate;
+    unfold TranslatableGlobalContext; unfold translate_gc. split.
+    + intros.
+      apply (ND_imp_e (p := Verum)) in H. assumption. apply ND_True_intro.
+    + intros. apply ND_imp_i2. apply (@weakening []%list [Verum]%list) in H.
+      assumption. apply empty_subcontext.
+  - intros.
+    split.
+    + assert (proves (translate (Γ';; Δ |- J)) ->
+       map translate_definition Γ' ⊢ translate_antecedent Δ J). {
+        apply (IHΓ' Δ J).
+      }
+      destruct Γ' as [ | s Γ''].
+ ++ unfold translate; unfold TranslatableJudgement; unfold translate;
+    unfold TranslatableGlobalContext; unfold translate_gc. intros.
+    apply (@weakening []%list [(translate_definition h)]%list) in H0.
+    unfold map. apply (ND_imp_e (p := translate_definition h)) in H0.
+    assumption. apply ND_assume; prove_In. apply empty_subcontext.
+ ++ intros.
+    assert (translate ((h :: s :: Γ'')%list;; Δ |- J) =
+            Implies (And (translate_definition  h) (translate_gc (s :: Γ'')%list))
+                    (translate_antecedent Δ J)). {
+      unfold translate; unfold TranslatableJudgement; unfold translate;
+      unfold TranslatableGlobalContext.
+      assert (translate_gc (h :: s ::  Γ'')%list = And (translate_definition h) (translate_gc (s :: Γ'')%list)). {
+        unfold translate_gc. auto.
+      }
+      auto.
+    }
+    fold GlobalContext in H0; fold GlobalContext in H1.
+    rewrite H1 in H0. apply ND_curry in H0 as H2.
+Admitted.
+
+Lemma explicit_uncurried_translate_antecedent_structure :
+  forall (T : SoftType) (lc : LocalContext) (j : JudgementType) (A : Formula),
+  A = (right_conjoin_many (translate T) (List.map translate lc)) ->
+  uncurried_translate_antecedent (T::lc)%list j
+  = Every (length (T::lc)%list)
+          (Implies A (translate j)).
+Proof.
+  intros. destruct lc.
+  + assert (A = translate T). { unfold translate in H.
+      assert (map (let (translate) := TranslatableSoftType in
+          translate) [] = []%list). { simpl; auto. }
+      rewrite H0 in H. clear H0.
+      unfold right_conjoin_many in H. auto.
+    } unfold uncurried_translate_antecedent. rewrite <- H. reflexivity.
+  + unfold uncurried_translate_antecedent. rewrite H. reflexivity.
+Qed.
+
 Lemma hamburger_helper : forall (J1 J2 J3 : JudgementType) (Γ : GlobalContext) (Δ : LocalContext),
   proves (Implies (translate J1) (Implies (translate J2) (translate J3))) ->
   proves (translate (Γ;; Δ |- J1)) ->
   proves (translate (Γ;; Δ |- J2)) ->
   proves (translate (Γ;; Δ |- J3)).
 Proof.
-Admitted.
-
-(* Tedious proof by induction, sigh *)
-Theorem global_context_to_context : forall (Γ : GlobalContext) (Δ : LocalContext) (J : JudgementType),
-  (proves (translate (Γ;; Δ |- J))) <-> ((map translate_definition Γ) ⊢ (translate_antecedent Δ J)).
-Proof.
-Admitted.
+  intros.
+  rewrite global_context_to_context; rewrite global_context_to_context in H0; rewrite global_context_to_context in H1.
+  destruct Δ as [|s Δ'].
+  - assert (translate_antecedent []%list J1 = translate J1). { simpl; auto. }
+    rewrite H2 in H0. clear H2.
+    assert (translate_antecedent []%list J2 = translate J2). { simpl; auto. }
+    rewrite H2 in H1. clear H2.
+    assert (translate_antecedent []%list J3 = translate J3). { simpl; auto. }
+    rewrite H2. clear H2.
+    apply (@weakening []%list (map translate_definition Γ)) in H as H2. 2: apply empty_subcontext.
+    apply (ND_imp_e (p := translate J1)) in H2.
+    apply (ND_imp_e (p := translate J2)) in H2.
+    assumption. assumption. assumption.
+  - set (Δ := (s::Δ')%list). fold LocalContext in Δ. fold Δ in H0; fold Δ in H1.
+    assert (Δ <> []%list). { discriminate. }
+    set (A := (right_conjoin_many (translate s) (List.map translate Δ'))).
+    
+    Check (explicit_uncurried_translate_antecedent_structure s Δ' J1 A).
+    assert (uncurried_translate_antecedent (s :: Δ')%list J1 = Every (Datatypes.length (s :: Δ')) (Implies A (translate J1))). {
+      apply (explicit_uncurried_translate_antecedent_structure s Δ' J1 A). auto.
+    } unfold translate_antecedent in H0. fold Δ in H3. rewrite H3 in H0. clear H3.
+    assert (uncurried_translate_antecedent (s :: Δ')%list J2 = Every (Datatypes.length (s :: Δ')) (Implies A (translate J2))). {
+      apply (explicit_uncurried_translate_antecedent_structure s Δ' J2 A). auto.
+    } unfold translate_antecedent in H1; fold Δ in H3. rewrite H3 in H1; clear H3.
+    assert (uncurried_translate_antecedent (s :: Δ')%list J3 = Every (Datatypes.length (s :: Δ')) (Implies A (translate J3))). {
+      apply (explicit_uncurried_translate_antecedent_structure s Δ' J3 A). auto.
+    } unfold translate_antecedent; fold Δ in H3. rewrite H3; clear H3.
+    apply (@weakening []%list (map translate_definition Γ)) in H as H3. 2: apply empty_subcontext.
+    apply (variadic_transport (m := length Δ) (q := translate J1) (r := Implies (translate J2) (translate J3)) (A := A)) in H3 as H4. 
+    2: assumption.
+    apply (variadic_modus_ponens (m := length Δ) (p := translate J2) (q := translate J3) (a := A)) in H4 as H5. 
+    assumption. assumption.
+Qed.
 
 Lemma assume_correctness : forall (Γ : GlobalContext) (Δ : LocalContext) (J : JudgementType),
   gc_contains Γ (Δ, J) -> proves (translate (Γ;; Δ |- J)).
@@ -585,23 +707,6 @@ Lemma empty_context_correctness :
 Proof. 
   intros; simpl; apply Verum_implies_Verum.
 Qed.
-
-Lemma translate_subst_to_capture_free_subst :
-  forall (t : Term) (n : nat) (J : JudgementType),
-  translate (subst (BVar n) t J) = capture_free_subst n t (translate J).
-Proof.
-  intros.
-  destruct J as [|tm T|T1 T2|T|a T].
-  - auto.
-  - (* Esti tm T *)
-    admit.
-  - (* Subtype T1 T2 *)
-    admit.
-  - (* Inhabited T *)
-    admit.
-  - (* HasAttribute a T *)
-    admit.
-Admitted.
 
 (* XXX TODO: need to replace [t] with [iter_tlift (something) 0 t].
 
@@ -628,17 +733,17 @@ the rule of inference. Basically, it seems we need a [capture_free_subst] for
 is from the [LocalContext], at least, in the soft type system).
 *)
 
-Lemma translate_antecedent_step :
+Lemma translate_antecedent_step {Γ : list Formula} :
   forall (T : SoftType) (Δ : LocalContext) (J : JudgementType),
-translate_antecedent (T :: Δ)%list J =
-Forall (Implies (translate T) (translate_antecedent Δ J)).
+Γ ⊢ translate_antecedent (T :: Δ)%list J = Γ ⊢ Forall (Implies (translate T) (translate_antecedent Δ J)).
 Proof.
-Admitted.
-
-Lemma esti_equivalence : forall (T : SoftType) (Γ : GlobalContext) (Δ : LocalContext) (t : Term) (J : JudgementType),
-  (proves (translate (Γ;; Δ |- Esti t T)) ->
-            map translate_definition Γ ⊢ capture_free_subst 0 t (translate T)).
-Proof.
+  intros.
+  set (A := right_conjoin_many (translate T) (map translate Δ)).
+  assert (translate_antecedent (T :: Δ)%list J = uncurried_translate_antecedent (T :: Δ)%list J). {
+    auto.
+  } rewrite H.
+  rewrite (explicit_uncurried_translate_antecedent_structure T Δ J A). 2: auto.
+  admit. (* Tedious proof commuting "And"-ed clauses *)
 Admitted.
 
 Lemma wt_subst_correctness : forall (T : SoftType) (Γ : GlobalContext) (Δ : LocalContext) (t : Term) (J : JudgementType),
@@ -646,40 +751,17 @@ Lemma wt_subst_correctness : forall (T : SoftType) (Γ : GlobalContext) (Δ : Lo
   proves (translate (Γ;; Δ |- Esti t T)) ->
   proves (translate (Γ;; (LocalContext.capture_free_subst 0 t Δ) |- subst (BVar (length Δ)) t J)).
 Proof.
-  intros.
-  assert (proves (translate (Γ;; (T :: Δ)%list |- J))
-          = (map translate_definition Γ) ⊢ (Forall (Implies (translate T) (translate_antecedent Δ J)))). {
-    assert (proves (translate (Γ;; (T :: Δ)%list |- J))
-            = map translate_definition Γ ⊢ translate_antecedent (T :: Δ)%list J). {
-      apply propositional_extensionality.
-      apply (global_context_to_context Γ (T :: Δ)%list J).
-    }
-    rewrite H1. rewrite translate_antecedent_step.
-    reflexivity.
-  }
-  apply global_context_to_context.
-  assert (map translate_definition Γ ⊢ translate_antecedent (LocalContext.capture_free_subst 0 t Δ) (subst (BVar (Datatypes.length Δ)) t J)
-          = map translate_definition Γ ⊢ capture_free_subst 0 t (translate_antecedent Δ J)). {
-    admit.
-  } rewrite H2.
-  assert (map translate_definition Γ ⊢ (translate_antecedent (T::Δ)%list J)
-          -> map translate_definition Γ ⊢ capture_free_subst 0 t (translate_antecedent Δ J)). {
-    intros.
-    rewrite translate_antecedent_step in H3.
-    apply (ND_forall_elim (t := t)) in H3.
-    assert (map translate_definition Γ ⊢ capture_free_subst 0 t (Implies (translate T) (translate_antecedent Δ J)) 
-            = map translate_definition Γ ⊢ Implies (capture_free_subst 0 t (translate T)) (capture_free_subst 0 t (translate_antecedent Δ J))). {
-      simpl; auto.
-    } rewrite H4 in H3. clear H4.
-    apply (ND_imp_e (p := capture_free_subst 0 t (translate T))) in H3.
-    assumption.
-    assert (proves (translate (Γ;; Δ |- Esti t T)) ->
-            map translate_definition Γ ⊢ capture_free_subst 0 t (translate T)). {
-      apply esti_equivalence. auto.
-    } apply H4. assumption.
-  }
-  apply H3.
-  apply global_context_to_context in H as H4. assumption.
+  intros. destruct Δ as [| s Δ'].
+  - unfold LocalContext.capture_free_subst; unfold length.
+    unfold translate; unfold TranslatableJudgement; unfold translate_antecedent; unfold uncurried_translate_antecedent.
+    unfold translate in H; unfold TranslatableJudgement in H; unfold translate_antecedent in H; unfold uncurried_translate_antecedent in H.
+    unfold map in H; unfold length in H; unfold Every in H.
+    assert (right_conjoin_many (translate T) [] = translate T). { auto. }
+    rewrite H1 in H. apply (implies_forall_e (translate Γ) (Implies (translate T) (translate J)) t) in H as H2.
+    unfold translate in H0; unfold TranslatableJudgement in H0; unfold translate_antecedent in H0; unfold uncurried_translate_antecedent in H0.
+    assert (translate (Esti t T) = unshift (capture_free_subst 0 (shift t) (translate T))). { auto. }
+    rewrite H3 in H0.
+    
 Admitted.
 
 Lemma inhabited_star_correctness : forall (Γ : GlobalContext) (Δ : LocalContext),
@@ -766,6 +848,9 @@ Proof.
   assert (proves (Implies (unshift (capture_free_subst 0 (shift t) (translate T1)))
                           (Implies (Forall (Implies (translate T1) (translate T2)))
                                    (unshift (capture_free_subst 0 (shift t) (translate T2)))))). {
+    apply ND_imp_i2; apply ND_imp_i2.
+    Assume ([Forall (Implies (translate T1) (translate T2)); unshift (capture_free_subst 0 (shift t) (translate T1))] ⊢ Forall (Implies (translate T1) (translate T2))).
+    Assume ([Forall (Implies (translate T1) (translate T2)); unshift (capture_free_subst 0 (shift t) (translate T1))] ⊢ unshift (capture_free_subst 0 (shift t) (translate T1))).
     admit.
   } rewrite <- H3 in H4; rewrite <- H2 in H4; rewrite <- H1 in H4.
   apply (hamburger_helper (Esti t T1) (Subtype T1 T2) (Esti t T2) Γ Δ).

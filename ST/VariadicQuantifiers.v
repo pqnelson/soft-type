@@ -820,10 +820,10 @@ Proof.
 Admitted.
 
 (* Actually used *)
-Theorem variadic_transport {Γ m p q r} :
+Theorem variadic_transport {Γ m A q r} :
   Γ ⊢ Implies q r ->
-  Γ ⊢ Every m (Implies p q) ->
-  Γ ⊢ Every m (Implies p r).
+  Γ ⊢ Every m (Implies A q) ->
+  Γ ⊢ Every m (Implies A r).
 Proof.
   intros.
 Admitted.
